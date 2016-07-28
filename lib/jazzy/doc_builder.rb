@@ -129,6 +129,9 @@ module Jazzy
         SearchBuilder.build(source_module, output_dir)
       end
 
+      warn 'building redirects'
+      build_redirects(output_dir, source_module.docs)
+
       copy_assets(output_dir)
 
       DocsetBuilder.new(output_dir, source_module).build!
@@ -137,6 +140,24 @@ module Jazzy
       puts "jam out ♪♫ to your fresh new docs in `#{friendly_path}`"
 
       source_module
+    end
+
+    # This is to override jazzy default behavior where empty classes that are grouped elsewhere
+    # don't get their own .html files. We want to write those .html files and redirect them to
+    # the (documentation) parent document.
+    def self.build_redirects(output_dir, docs)
+      docs.each do |doc|
+        if doc.children.empty?
+          if !doc.parent_in_code && doc.parent_in_docs && doc.type.name == 'Class'
+            own_url = (SourceKitten.subdir_for_doc(doc) + [doc.name + '.html']).join('/')
+            File.open(output_dir + own_url, 'w') do |f|
+              f.write "<html><body><script>window.location.href=\"../#{doc.url}\";</script></body></html>"
+            end
+          end
+        else
+          build_redirects(output_dir, doc.children)
+        end
+      end
     end
 
     # Build docs given sourcekitten output
