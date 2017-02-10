@@ -1,3 +1,9 @@
+## Code of Conduct
+
+This project adheres to the [Contributor Covenant Code of Conduct](https://realm.io/conduct).
+By participating, you are expected to uphold this code. Please report
+unacceptable behavior to [info@realm.io](mailto:info@realm.io).
+
 ## Tracking changes
 
 All changes should be made via pull requests on GitHub.
@@ -29,7 +35,7 @@ git checkout master
 git pull
 git checkout -
 git rebase master
-bundle install
+rake bootstrap
 bundle exec rake rebuild_integration_fixtures
 cd spec/integration_specs
 git checkout -b $jazzy_branch_name
@@ -42,6 +48,8 @@ git push
 
 You'll need push access to the integration specs repo to do this. You can
 request access from one of the maintainers when filing your PR.
+
+You must have Xcode 8.2 installed to build the integration specs.
 
 ## Making changes to SourceKitten
 

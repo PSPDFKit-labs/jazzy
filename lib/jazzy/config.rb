@@ -246,10 +246,10 @@ module Jazzy
                    'https://github.com/realm/realm-cocoa/tree/v0.87.1)'
 
     # ──────── Doc generation options ────────
-    config_attr :searchable,
-      command_line: '--searchable',
-      description: ['Generate search index. '\
-                    'Search should be supported by the theme used.'],
+    config_attr :disable_search,
+      command_line: '--disable-search',
+      description: ['Avoid generating a search index. '\
+                    'Search is available in some themes.'],
       default: false
 
     config_attr :skip_documentation,
@@ -299,6 +299,14 @@ module Jazzy
         Pathname(__FILE__).parent + 'themes' + t
       end
 
+    config_attr :use_safe_filenames,
+      command_line: '--use-safe-filenames',
+      description: 'Replace unsafe characters in filenames with an encoded '\
+                   'representation. This will reduce human readability of '\
+                   'some URLs, but may be necessary for projects that '\
+                   'expose filename-unfriendly functions such as /(_:_:)',
+      default: false
+
     config_attr :template_directory,
       command_line: ['-t', '--template-directory DIRPATH'],
       description: 'DEPRECATED: Use --theme instead.',
@@ -336,7 +344,8 @@ module Jazzy
       if config.root_url
         config.dash_url ||= URI.join(
           config.root_url,
-          "docsets/#{config.module_name}.xml")
+          "docsets/#{config.module_name}.xml",
+        )
       end
 
       config
@@ -419,7 +428,7 @@ module Jazzy
     def read_config_file(file)
       case File.extname(file)
         when '.json'         then JSON.parse(File.read(file))
-        when '.yaml', '.yml' then YAML.load(File.read(file))
+        when '.yaml', '.yml' then YAML.safe_load(File.read(file))
         else raise "Config file must be .yaml or .json, but got #{file.inspect}"
       end
     end

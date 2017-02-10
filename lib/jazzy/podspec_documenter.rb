@@ -9,7 +9,9 @@ module Jazzy
       @podspec = podspec
     end
 
-    def sourcekitten_output
+    # Build documentation from the given options
+    # @param [Config] options
+    def sourcekitten_output(config)
       installation_root = Pathname(Dir.mktmpdir(['jazzy', podspec.name]))
       installation_root.rmtree if installation_root.exist?
       Pod::Config.instance.with_changes(installation_root: installation_root) do
@@ -22,12 +24,13 @@ module Jazzy
                              .map(&:label)
 
           targets.map do |t|
-            SourceKitten.run_sourcekitten(
-              %W(doc --module-name #{podspec.module_name} -- -target #{t}),
-            )
+            args = %W(doc --module-name #{podspec.module_name} -- -target #{t})
+            swift_version = (config.swift_version || '3')[0] + '.0'
+            args << "SWIFT_VERSION=\"#{swift_version}\""
+            SourceKitten.run_sourcekitten(args)
           end
         end
-        stdout.reduce([]) { |a, s| a + JSON.load(s) }.to_json
+        stdout.reduce([]) { |a, s| a + JSON.parse(s) }.to_json
       end
     end
 
@@ -58,6 +61,10 @@ module Jazzy
       end
       unless config.github_file_prefix_configured
         config.github_file_prefix = github_file_prefix(podspec)
+      end
+      unless config.swift_version_configured
+        trunk_swift_build = podspec.attributes_hash['pushed_with_swift_version']
+        config.swift_version = trunk_swift_build if trunk_swift_build
       end
     end
     # rubocop:enable Metrics/CyclomaticComplexity

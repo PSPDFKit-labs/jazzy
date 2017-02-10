@@ -1,3 +1,134 @@
+## Master
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* None.
+
+## 0.7.4
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Generate shields.io badge for documentation coverage, unless
+  `hide_documentation_coverage` is set.  
+  [Harlan Haskins](https://github.com/harlanhaskins)
+  [#723](https://github.com/realm/jazzy/issues/723)
+
+* Add support for searching docs when using the `fullwidth` theme. A new option,
+  `--disable-search`, lets you turn this off.  
+  [Esad Hajdarevic](https://github.com/esad)
+  [Tom MacWright](https://github.com/tmcw)
+  [Nadia Barbosa](https://github.com/captainbarbosa)
+  [#14](https://github.com/realm/jazzy/issues/14)
+
+* New config option `use_safe_filenames` encodes unsafe characters when
+  generating filenames. By default, documentation may receive filenames like
+  `/(_:_:).html`. With `use_safe_filenames`, the same file will receive the name
+  `_2F_28_5F_3A_5F_3A_29.html` instead.  
+  [Jeremy David Giesbrecht](https://github.com/SDGGiesbrecht)
+  [#699](https://github.com/realm/jazzy/issues/699)
+  [#146](https://github.com/realm/jazzy/issues/146)
+  [#361](https://github.com/realm/jazzy/issues/361)
+  [#547](https://github.com/realm/jazzy/issues/547)
+
+* References to Objective-C methods are now autolinked.  
+  [Minh Nguyễn](https://github.com/1ec5)
+  [#362](https://github.com/realm/jazzy/issues/362)
+
+* Print documentation coverage percentage and the number of undocumented
+  methods to the command line when running jazzy.  
+  [Jason Wray](https://github.com/friedbunny)
+
+##### Bug Fixes
+
+* Fix issue where existing abstracts for non custom sections would be completely
+  overwritten when using extra abstract injection with --abstract.  
+  [Thibaud Robelain](https://github.com/thibaudrobelain)
+  [#600](https://github.com/realm/jazzy/issues/600)
+
+* Fix issue where generic type parameters registered as undocumented symbols.  
+  [Jeremy David Giesbrecht](https://github.com/SDGGiesbrecht)
+  [#429](https://github.com/realm/jazzy/issues/429)
+
+* Fix issue where parameter and return callouts were duplicated in documentation.  
+  [Jeremy David Giesbrecht](https://github.com/SDGGiesbrecht)
+  [#673](https://github.com/realm/jazzy/issues/673)
+
+* Fix issue where Objective-C superclass in declaration was unlinked.  
+  [Minh Nguyễn](https://github.com/1ec5)
+  [#706](https://github.com/realm/jazzy/issues/706)
+
+* Fix issue where multiple Objective-C categories of the same external class
+  in different files were merged into one and named after the first category
+  found.  
+  [Minh Nguyễn](https://github.com/1ec5)
+  [#539](https://github.com/realm/jazzy/issues/539)
+
+* String literals in code listings are no longer wrapped in `<q>` tags (`apple`
+  and `fullwidth` themes only).  
+  [Minh Nguyễn](https://github.com/1ec5)
+  [#714](https://github.com/realm/jazzy/issues/714)
+
+* Fix issue where passing a `--podspec` argument would use a malformed
+  `SWIFT_VERSION` value, causing compilation to fail.  
+  [JP Simard](https://github.com/jpsim)
+
+## 0.7.3
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Podspec-based documentation will take trunk's `pushed_with_swift_version`
+  attribute into account when generating documentation by default.  
+  [Orta Therox](https://github.com/orta)
+
+* Podspec-based documentation respects the `swift-version` config option.  
+  [Orta Therox](https://github.com/orta)
+
+##### Enhancements
+
+* Support Objective-C class properties.  
+  [Jérémie Girault](https://github.com/jeremiegirault)
+  [JP Simard](https://github.com/jpsim)
+
+* Support documenting Swift 3 operator precedence groups.  
+  [JP Simard](https://github.com/jpsim)
+
+##### Bug Fixes
+
+* Rename Dash typedef type from "Alias" to "Type".  
+  [Bogdan Popescu](https://github.com/Kapeli)
+
+* Fix crash when sorting multiple identically named declarations with no USR,
+  which is very common when generating docs for podspecs supporting multiple
+  platforms.  
+  [JP Simard](https://github.com/jpsim)
+  [#661](https://github.com/realm/jazzy/issues/661)
+
+* Fix Xcode not being found when specifying a custom Swift version
+  (`--swift-version`).  
+  [Samuel Giddins](https://github.com/segiddins)
+  [Paul Cantrell](https://github.com/pcantrell)
+  [#656](https://github.com/realm/jazzy/issues/656)
+
+* Fix crash when generating Objective-C docs for projects with "@" directives in
+  documentation comments with Xcode 8.1 or later.  
+  [Jérémie Girault](https://github.com/jeremiegirault)
+
 ## 0.7.2
 
 ##### Breaking

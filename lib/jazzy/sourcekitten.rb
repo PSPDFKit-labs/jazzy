@@ -11,6 +11,38 @@ require 'jazzy/source_mark'
 
 ELIDED_AUTOLINK_TOKEN = '36f8f5912051ae747ef441d6511ca4cb'.freeze
 
+def autolink_regex(middle_regex, after_highlight)
+  start_tag_re, end_tag_re =
+    if after_highlight
+      [/<span class="(?:n|kt|nc)">/, '</span>']
+    else
+      ['<code>', '</code>']
+    end
+  /(#{start_tag_re})[ \t]*(#{middle_regex})[ \t]*(#{end_tag_re})/
+end
+
+class String
+  def autolink_block(doc_url, middle_regex, after_highlight)
+    gsub(autolink_regex(middle_regex, after_highlight)) do
+      original = Regexp.last_match(0)
+      start_tag, raw_name, end_tag = Regexp.last_match.captures
+      link_target = yield(raw_name)
+
+      if link_target &&
+         !link_target.type.extension? &&
+         link_target.url &&
+         link_target.url != doc_url.split('#').first && # Don't link to parent
+         link_target.url != doc_url # Don't link to self
+        start_tag +
+          "<a href=\"#{ELIDED_AUTOLINK_TOKEN}#{link_target.url}\">" +
+          raw_name + '</a>' + end_tag
+      else
+        original
+      end
+    end
+  end
+end
+
 module Jazzy
   # This module interacts with the sourcekitten command-line executable
   module SourceKitten
@@ -21,7 +53,8 @@ module Jazzy
     def self.group_docs(docs)
       custom_categories, docs = group_custom_categories(docs)
       type_categories, uncategorized = group_type_categories(
-        docs, custom_categories.any? ? 'Other ' : '')
+        docs, custom_categories.any? ? 'Other ' : ''
+      )
       custom_categories + type_categories + uncategorized
     end
 
@@ -48,19 +81,32 @@ module Jazzy
         make_group(
           children,
           type_category_prefix + type.plural_name,
-          "The following #{type.plural_name.downcase} are available globally.")
+          "The following #{type.plural_name.downcase} are available globally.",
+        )
       end
       [group.compact, docs]
     end
 
     def self.make_group(group, name, abstract)
       group.reject! { |doc| doc.name.empty? }
-      SourceDeclaration.new.tap do |sd|
-        sd.type     = SourceDeclaration::Type.overview
-        sd.name     = name
-        sd.abstract = abstract
-        sd.children = group
-      end unless group.empty?
+      unless group.empty?
+        SourceDeclaration.new.tap do |sd|
+          sd.type     = SourceDeclaration::Type.overview
+          sd.name     = name
+          sd.abstract = abstract
+          sd.children = group
+        end
+      end
+    end
+
+    def self.sanitize_filename(doc)
+      unsafe_filename = doc.name
+      sanitzation_enabled = Config.instance.use_safe_filenames
+      if sanitzation_enabled && !doc.type.name_controlled_manually?
+        return CGI.escape(unsafe_filename).gsub('_', '%5F').tr('%', '_')
+      else
+        return unsafe_filename
+      end
     end
 
     # rubocop:disable Metrics/MethodLength
@@ -72,7 +118,7 @@ module Jazzy
           # Create HTML page for this doc if it has children or is root-level
           doc.url = (
             subdir_for_doc(doc) +
-            [doc.name + '.html']
+            [sanitize_filename(doc) + '.html']
           ).join('/')
           doc.children = make_doc_urls(doc.children)
         else
@@ -198,11 +244,16 @@ module Jazzy
     # rubocop:enable Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/PerceivedComplexity
 
-    def self.process_undocumented_token(doc, declaration)
+    def self.should_mark_undocumented(kind, filepath)
       source_directory = Config.instance.source_directory.to_s
+      (filepath || '').start_with?(source_directory) &&
+        kind != 'source.lang.swift.decl.generic_type_param'
+    end
+
+    def self.process_undocumented_token(doc, declaration)
       filepath = doc['key.filepath']
       objc = Config.instance.objc_mode
-      if filepath && (filepath.start_with?(source_directory) || objc)
+      if objc || should_mark_undocumented(doc['key.kind'], filepath)
         @undocumented_decls << declaration
       end
       return nil if !documented_child?(doc) && @skip_undocumented
@@ -266,14 +317,14 @@ module Jazzy
     # rubocop:enable Metrics/PerceivedComplexity
 
     def self.make_substructure(doc, declaration)
-      if doc['key.substructure']
-        declaration.children = make_source_declarations(
-          doc['key.substructure'],
-          declaration,
-        )
-      else
-        declaration.children = []
-      end
+      declaration.children = if doc['key.substructure']
+                               make_source_declarations(
+                                 doc['key.substructure'],
+                                 declaration,
+                               )
+                             else
+                               []
+                             end
     end
 
     # rubocop:disable Metrics/MethodLength
@@ -285,7 +336,8 @@ module Jazzy
       Array(docs).each do |doc|
         if doc.key?('key.diagnostic_stage')
           declarations += make_source_declarations(
-            doc['key.substructure'], parent)
+            doc['key.substructure'], parent
+          )
           next
         end
         declaration = SourceDeclaration.new
@@ -296,7 +348,8 @@ module Jazzy
         if declaration.type.swift_enum_case?
           # Enum "cases" are thin wrappers around enum "elements".
           declarations += make_source_declarations(
-            doc['key.substructure'], parent)
+            doc['key.substructure'], parent
+          )
           next
         end
         next unless declaration.type.should_document?
@@ -343,7 +396,7 @@ module Jazzy
     # Merges redundant declarations when documenting podspecs.
     def self.deduplicate_declarations(declarations)
       duplicate_groups = declarations
-                         .group_by { |d| deduplication_key(d) }
+                         .group_by { |d| deduplication_key(d, declarations) }
                          .values
 
       duplicate_groups.map do |group|
@@ -352,11 +405,18 @@ module Jazzy
       end
     end
 
+    # Returns true if an Objective-C declaration is mergeable.
+    def self.mergeable_objc?(decl, root_decls)
+      decl.type.objc_class? \
+        || (decl.type.objc_category? \
+            && name_match(decl.objc_category_name[0], root_decls))
+    end
+
     # Two declarations get merged if they have the same deduplication key.
-    def self.deduplication_key(decl)
+    def self.deduplication_key(decl, root_decls)
       if decl.type.swift_extensible? || decl.type.swift_extension?
         [decl.usr, decl.name]
-      elsif decl.type.objc_class? || decl.type.objc_category?
+      elsif mergeable_objc?(decl, root_decls)
         name, _ = decl.objc_category_name || decl.name
         [name, :objc_class_and_categories]
       else
@@ -393,7 +453,8 @@ module Jazzy
       decls = typedecls + extensions
       decls.first.tap do |merged|
         merged.children = deduplicate_declarations(
-          decls.flat_map(&:children).uniq)
+          decls.flat_map(&:children).uniq,
+        )
         merged.children.each do |child|
           child.parent_in_code = merged
         end
@@ -474,21 +535,8 @@ module Jazzy
     # - method signatures after they've been processed by the highlighter
     #
     # The `after_highlight` flag is used to differentiate between the two modes.
-    # rubocop:disable Metrics/MethodLength
-    # rubocop:disable Metrics/PerceivedComplexity
-    # rubocop:disable Metrics/CyclomaticComplexity
     def self.autolink_text(text, doc, root_decls, after_highlight = false)
-      start_tag_re, end_tag_re =
-        if after_highlight
-          [/<span class="(?:n|kt)">/, '</span>']
-        else
-          ['<code>', '</code>']
-        end
-
-      text.gsub(/(#{start_tag_re})[ \t]*([^\s]+)[ \t]*(#{end_tag_re})/) do
-        original = Regexp.last_match(0)
-        start_tag, raw_name, end_tag = Regexp.last_match.captures
-
+      text.autolink_block(doc.url, '[^\s]+', after_highlight) do |raw_name|
         parts = raw_name
                 .split(/(?<!\.)\.(?!\.)/) # dot with no neighboring dots
                 .reject(&:empty?)
@@ -499,24 +547,24 @@ module Jazzy
                     name_match(first_part, root_decls)
 
         # Traverse children via subsequence components, if any
-        link_target = name_traversal(parts, name_root)
+        name_traversal(parts, name_root)
+      end.autolink_block(doc.url, '[+-]\[\w+(?: ?\(\w+\))? [\w:]+\]',
+                         after_highlight) do |raw_name|
+        match = raw_name.match(/([+-])\[(\w+(?: ?\(\w+\))?) ([\w:]+)\]/)
 
-        if link_target &&
-           !link_target.type.extension? &&
-           link_target.url &&
-           link_target.url != doc.url.split('#').first && # Don't link to parent
-           link_target.url != doc.url # Don't link to self
-          start_tag +
-            "<a href=\"#{ELIDED_AUTOLINK_TOKEN}#{link_target.url}\">" +
-            raw_name + '</a>' + end_tag
-        else
-          original
+        # Subject component can match any ancestor or top-level doc
+        subject = match[2].delete(' ')
+        name_root = ancestor_name_match(subject, doc) ||
+                    name_match(subject, root_decls)
+
+        if name_root
+          # Look up the verb in the subject’s children
+          name_match(match[1] + match[3], name_root.children)
         end
+      end.autolink_block(doc.url, '[+-]\w[\w:]*', after_highlight) do |raw_name|
+        name_match(raw_name, doc.children)
       end
     end
-    # rubocop:enable Metrics/CyclomaticComplexity
-    # rubocop:enable Metrics/PerceivedComplexity
-    # rubocop:enable Metrics/MethodLength
 
     def self.autolink(docs, root_decls)
       docs.each do |doc|
@@ -525,13 +573,17 @@ module Jazzy
         doc.return = autolink_text(doc.return, doc, root_decls) if doc.return
         doc.abstract = autolink_text(doc.abstract, doc, root_decls)
 
-        doc.declaration = autolink_text(
-          doc.declaration, doc, root_decls, true
-        ) if doc.declaration
+        if doc.declaration
+          doc.declaration = autolink_text(
+            doc.declaration, doc, root_decls, true
+          )
+        end
 
-        doc.other_language_declaration = autolink_text(
-          doc.other_language_declaration, doc, root_decls, true
-        ) if doc.other_language_declaration
+        if doc.other_language_declaration
+          doc.other_language_declaration = autolink_text(
+            doc.other_language_declaration, doc, root_decls, true
+          )
+        end
       end
     end
 

@@ -1,6 +1,7 @@
 require 'fileutils'
 require 'mustache'
 require 'uri'
+require 'net/http'
 require 'pathname'
 require 'sass'
 
@@ -33,7 +34,7 @@ module Jazzy
     def self.doc_structure_for_docs(docs)
       docs.map do |doc|
         children = doc.children
-                      .sort_by { |c| [c.nav_order, c.name, c.usr] }
+                      .sort_by { |c| [c.nav_order, c.name, c.usr || ''] }
                       .flat_map do |child|
           # FIXME: include arbitrarily nested extensible types
           [{ name: child.name, url: child.url }] +
@@ -58,7 +59,8 @@ module Jazzy
         stdout = options.sourcekitten_sourcefile.read
       else
         if options.podspec_configured
-          stdout = PodspecDocumenter.new(options.podspec).sourcekitten_output
+          pod_documenter = PodspecDocumenter.new(options.podspec)
+          stdout = pod_documenter.sourcekitten_output(options)
         else
           stdout = Dir.chdir(options.source_directory) do
             arguments = SourceKitten.arguments_from_options(options)
@@ -112,19 +114,14 @@ module Jazzy
 
       structure = doc_structure_for_docs(docs)
 
-      docs << SourceDocument.new.tap do |sd|
-        sd.name = 'index'
-        sd.children = []
-        sd.type = SourceDeclaration::Type.new 'document.markdown'
-        sd.readme_path = options.readme_path
-      end
+      docs << SourceDocument.make_index(options.readme_path)
 
       source_module = SourceModule.new(options, docs, structure, coverage)
 
       output_dir = options.output
       build_docs(output_dir, source_module.docs, source_module)
 
-      if options.searchable
+      unless options.disable_search
         warn 'building search index'
         SearchBuilder.build(source_module, output_dir)
       end
@@ -135,6 +132,8 @@ module Jazzy
       copy_assets(output_dir)
 
       DocsetBuilder.new(output_dir, source_module).build!
+
+      download_badge(source_module.doc_coverage, options)
 
       friendly_path = relative_path_if_inside(output_dir, Pathname.pwd)
       puts "jam out ♪♫ to your fresh new docs in `#{friendly_path}`"
@@ -169,10 +168,15 @@ module Jazzy
         sourcekitten_output,
         options.min_acl,
         options.skip_undocumented,
-        DocumentationGenerator.source_docs)
+        DocumentationGenerator.source_docs,
+      )
 
       prepare_output_dir(options.output, options.clean)
       write_lint_report(undocumented, options)
+
+      puts "#{coverage}\% documentation coverage " \
+        "with #{undocumented.count} undocumented symbol" \
+        "#{undocumented.count == 1 ? '' : 's'}"
 
       unless options.skip_documentation
         build_site(docs, coverage, options)
@@ -238,6 +242,7 @@ module Jazzy
       doc[:name] = name
       doc[:overview] = Jazzy.markdown.render(doc_model.content(source_module))
       doc[:custom_head] = Config.instance.custom_head
+      doc[:disable_search] = Config.instance.disable_search
       doc[:doc_coverage] = source_module.doc_coverage unless
         Config.instance.hide_documentation_coverage
       doc[:structure] = source_module.doc_structure
@@ -248,6 +253,44 @@ module Jazzy
       doc[:path_to_root] = path_to_root
       doc[:hide_name] = true
       doc.render
+    end
+
+    # Returns the appropriate color for the provided percentage,
+    # used for generating a badge on shields.io
+    # @param [Number] coverage The documentation coverage percentage
+    def self.color_for_coverage(coverage)
+      if coverage < 10
+        'red'
+      elsif coverage < 30
+        'orange'
+      elsif coverage < 60
+        'yellow'
+      elsif coverage < 85
+        'yellowgreen'
+      elsif coverage < 90
+        'green'
+      else
+        'brightgreen'
+      end
+    end
+
+    # Downloads an SVG from shields.io displaying the documentation percentage
+    # @param [Number] coverage The documentation coverage percentage
+    # @param [Config] options Build options
+    def self.download_badge(coverage, options)
+      if options.hide_documentation_coverage
+        return
+      end
+      warn 'downloading coverage badge'
+      color = color_for_coverage(coverage)
+      uri = URI.parse('https://img.shields.io')
+      url_path = "/badge/documentation-#{coverage}%25-#{color}.svg"
+      Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+        resp = http.get url_path
+        File.open(options.output + 'badge.svg', 'wb') do |file|
+          file.write resp.body
+        end
+      end
     end
 
     def self.should_link_to_github(file)
@@ -269,7 +312,8 @@ module Jazzy
                   "#L#{item.line}"
                 end
       relative_file_path = item.file.realpath.relative_path_from(
-        source_module.root_path)
+        source_module.root_path,
+      )
       "#{github_prefix}/#{relative_file_path}#{gh_line}"
     end
 
@@ -332,6 +376,7 @@ module Jazzy
       end
     end
 
+    # rubocop:disable Metrics/MethodLength
     # Build Mustache document from single parsed doc
     # @param [Config] options Build options
     # @param [Hash] doc_model Parsed doc. @see SourceKitten.parse
@@ -345,6 +390,7 @@ module Jazzy
 
       doc = Doc.new # Mustache model instance
       doc[:custom_head] = Config.instance.custom_head
+      doc[:disable_search] = Config.instance.disable_search
       doc[:doc_coverage] = source_module.doc_coverage unless
         Config.instance.hide_documentation_coverage
       doc[:name] = doc_model.name
@@ -361,5 +407,6 @@ module Jazzy
       doc[:path_to_root] = path_to_root
       doc.render.gsub(ELIDED_AUTOLINK_TOKEN, path_to_root)
     end
+    # rubocop:enable Metrics/MethodLength
   end
 end
