@@ -150,7 +150,7 @@ module Jazzy
           if !doc.parent_in_code && doc.parent_in_docs && doc.type.name == 'Class'
             own_url = (SourceKitten.subdir_for_doc(doc) + [doc.name + '.html']).join('/')
             File.open(output_dir + own_url, 'w') do |f|
-              f.write "<html><body><script>window.location.href=\"../#{doc.url}\";</script></body></html>"
+              f.write "<html><head><title>#{doc.name}</title></head><body><script>window.location.href=\"../#{doc.url}\";</script></body></html>"
             end
           end
         else
