@@ -178,6 +178,11 @@ module Jazzy
         "with #{undocumented.count} undocumented symbol" \
         "#{undocumented.count == 1 ? '' : 's'}"
 
+      puts "Undocumented symbols:"
+      undocumented.each do |declaration|
+        puts declaration.fully_qualified_name
+      end
+
       unless options.skip_documentation
         build_site(docs, coverage, options)
       end
