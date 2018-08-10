@@ -178,6 +178,11 @@ module Jazzy
         "with #{undocumented.count} undocumented symbol" \
         "#{undocumented.count == 1 ? '' : 's'}"
 
+      puts "Undocumented symbols:"
+      undocumented.each do |declaration|
+        puts declaration.fully_qualified_name
+      end
+
       unless options.skip_documentation
         build_site(docs, coverage, options)
       end
@@ -338,6 +343,9 @@ module Jazzy
         url:                        (item.url if item.children.any?),
         start_line:                 item.start_line,
         end_line:                   item.end_line,
+        deprecation_message:        (item.deprecation_message if item.deprecated),
+        unavailable_message:        (item.unavailable_message if item.unavailable),
+        usage_discouraged:          item.deprecated || item.unavailable,
       }
       item_render.reject { |_, v| v.nil? }
     end

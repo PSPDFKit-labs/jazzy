@@ -76,6 +76,10 @@ module Jazzy
     attr_accessor :start_line
     attr_accessor :end_line
     attr_accessor :nav_order
+    attr_accessor :deprecated
+    attr_accessor :deprecation_message
+    attr_accessor :unavailable
+    attr_accessor :unavailable_message
 
     def overview
       "#{alternative_abstract}\n\n#{abstract}\n\n#{discussion}".strip

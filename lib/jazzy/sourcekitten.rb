@@ -201,6 +201,8 @@ module Jazzy
       declaration.abstract = 'Undocumented'
       declaration.parameters = []
       declaration.children = []
+      declaration.unavailable_message = ''
+      declaration.deprecation_message = ''
     end
 
     def self.documented_child?(doc)
@@ -308,6 +310,8 @@ module Jazzy
       declaration.abstract = Jazzy.markdown.render(doc['key.doc.comment'] || '')
       declaration.discussion = ''
       declaration.return = make_paragraphs(doc, 'key.doc.result_discussion')
+      declaration.deprecation_message = Jazzy.markdown.render(doc['key.deprecation_message'] || '')
+      declaration.unavailable_message = Jazzy.markdown.render(doc['key.unavailable_message'] || '')
 
       declaration.parameters = parameters(doc)
 
@@ -371,6 +375,8 @@ module Jazzy
         declaration.column = doc['key.doc.column']
         declaration.start_line = doc['key.parsed_scope.start']
         declaration.end_line = doc['key.parsed_scope.end']
+        declaration.deprecated = doc['key.always_deprecated']
+        declaration.unavailable = doc['key.always_unavailable']
 
         next unless make_doc_info(doc, declaration)
         make_substructure(doc, declaration)
@@ -572,6 +578,8 @@ module Jazzy
 
         doc.return = autolink_text(doc.return, doc, root_decls) if doc.return
         doc.abstract = autolink_text(doc.abstract, doc, root_decls)
+        doc.unavailable_message = autolink_text(doc.unavailable_message, doc, root_decls) if doc.unavailable_message
+        doc.deprecation_message = autolink_text(doc.deprecation_message, doc, root_decls) if doc.deprecation_message
 
         if doc.declaration
           doc.declaration = autolink_text(
