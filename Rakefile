@@ -27,13 +27,34 @@ begin
 
   desc 'Run specs'
   task :spec do
-    title 'Running Unit Tests'
+    title 'Running Tests'
+    Rake::Task['unit_spec'].invoke
+    Rake::Task['objc_spec'].invoke
+    Rake::Task['swift_spec'].invoke
+    Rake::Task['cocoapods_spec'].invoke
+    Rake::Task['rubocop'].invoke
+  end
+
+  desc 'Run unit specs'
+  task :unit_spec do
     files = FileList['spec/*_spec.rb']
       .exclude('spec/integration_spec.rb').shuffle.join(' ')
     sh "bundle exec bacon #{files}"
-    sh 'bundle exec bacon spec/integration_spec.rb'
+  end
 
-    Rake::Task['rubocop'].invoke
+  desc 'Run objc integration specs'
+  task :objc_spec do
+    sh 'JAZZY_SPEC_SUBSET=objc bundle exec bacon spec/integration_spec.rb'
+  end
+
+  desc 'Run swift integration specs'
+  task :swift_spec do
+    sh 'JAZZY_SPEC_SUBSET=swift bundle exec bacon spec/integration_spec.rb'
+  end
+
+  desc 'Run cocoapods integration specs'
+  task :cocoapods_spec do
+    sh 'JAZZY_SPEC_SUBSET=cocoapods bundle exec bacon spec/integration_spec.rb'
   end
 
   desc 'Rebuilds integration fixtures'
@@ -71,24 +92,20 @@ begin
 
   #-- RuboCop ----------------------------------------------------------------#
 
-  require 'rubocop/rake_task'
-  RuboCop::RakeTask.new(:rubocop)
+  desc 'Runs RuboCop linter on Ruby files'
+  task :rubocop do
+    sh 'bundle exec rubocop lib spec'
+  end
 
   #-- SourceKitten -----------------------------------------------------------#
 
   desc 'Vendors SourceKitten'
   task :sourcekitten do
-    Dir.chdir('SourceKitten') do
-      `make installables`
+    sk_dir = 'SourceKitten'
+    Dir.chdir(sk_dir) do
+      `swift build -c release -Xswiftc -static-stdlib`
     end
-
-    destination = 'lib/jazzy/sourcekitten'
-    rakefile = File.read("#{destination}/Rakefile")
-    source = '/tmp/SourceKitten.dst/usr/local/.'
-    FileUtils.rm_rf destination
-    FileUtils.mkdir_p destination
-    FileUtils.cp_r source, destination
-    File.open("#{destination}/Rakefile", 'w') { |f| f.write rakefile }
+    FileUtils.cp_r "#{sk_dir}/.build/release/sourcekitten", 'bin'
   end
 
 rescue LoadError, NameError => e

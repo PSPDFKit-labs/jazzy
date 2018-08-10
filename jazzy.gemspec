@@ -11,19 +11,17 @@ Gem::Specification.new do |spec|
   spec.description   = 'Soulful docs for Swift & Objective-C. ' \
                        "Run in your Xcode project's root directory for " \
                        'instant HTML docs.'
-  spec.homepage      = 'http://github.com/realm/jazzy'
+  spec.homepage      = 'https://github.com/realm/jazzy'
   spec.license       = 'MIT'
 
   spec.files         = `git ls-files`.split($/)
   spec.executables   << 'jazzy'
 
-  spec.extensions    = ['lib/jazzy/SourceKitten/Rakefile']
-
   spec.add_runtime_dependency 'cocoapods', '~> 1.0'
   spec.add_runtime_dependency 'mustache', '~> 0.99'
   spec.add_runtime_dependency 'open4'
   spec.add_runtime_dependency 'redcarpet', '~> 3.2'
-  spec.add_runtime_dependency 'rouge', '~> 1.5'
+  spec.add_runtime_dependency 'rouge', ['>= 2.0.6', '< 4.0']
   spec.add_runtime_dependency 'sass', '~> 3.4'
   spec.add_runtime_dependency 'sqlite3', '~> 1.3'
   spec.add_runtime_dependency 'xcinvoke', '~> 0.3.0'

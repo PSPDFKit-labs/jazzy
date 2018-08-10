@@ -49,13 +49,16 @@ require 'colored'
 require 'CLIntegracon'
 
 require 'cocoapods'
-Pod::Config.instance.with_changes(silent: true) do
-  config = Pod::Config.instance
-  # working around a bug where `pod setup --silent` isn't silent
-  if config.sources_manager.master_repo_functional?
-    Pod::Command::Repo::Update.invoke(%w(master))
-  else
-    Pod::Command::Setup.invoke
+
+def configure_cocoapods
+  Pod::Config.instance.with_changes(silent: true) do
+    config = Pod::Config.instance
+    # working around a bug where `pod setup --silent` isn't silent
+    if config.sources_manager.master_repo_functional?
+      Pod::Command::Repo::Update.invoke(%w[master])
+    else
+      Pod::Command::Setup.invoke
+    end
   end
 end
 
@@ -66,7 +69,7 @@ CLIntegracon.configure do |c|
   # Ignore certain OSX files
   c.ignores '.DS_Store'
   c.ignores '.git'
-  c.ignores %r{^(?!(docs/|execution_output.txt))}
+  c.ignores %r{^(?!((api-)?docs/|execution_output.txt))}
   c.ignores '*.tgz'
 
   # Remove absolute paths from output
@@ -104,6 +107,9 @@ describe_cli 'jazzy' do
     s.default_args = []
     s.replace_path ROOT.to_s, 'ROOT'
     s.replace_pattern /^[\d\s:.-]+ ruby\[\d+:\d+\] warning:.*$[\n]?/, ''
+    # Remove version numbers from CocoaPods dependencies
+    # to make specs resilient against dependecy updates.
+    s.replace_pattern(/(Installing \w+ )\((.*)\)/, '\1(X.Y.Z)')
   end
 
   require 'shellwords'
@@ -126,6 +132,10 @@ describe_cli 'jazzy' do
   ga('send', 'pageview');
 </script>
   HTML
+
+  spec_subset = ENV['JAZZY_SPEC_SUBSET']
+
+  # rubocop:disable Style/MultilineIfModifier
 
   describe 'jazzy objective-c' do
     describe 'Creates Realm Objective-C docs' do
@@ -157,14 +167,9 @@ describe_cli 'jazzy' do
       behaves_like cli_spec 'misc_jazzy_objc_features',
                             '--theme fullwidth'
     end
-  end
+  end if !spec_subset || spec_subset == 'objc'
 
   describe 'jazzy swift' do
-    describe 'Creates docs for a podspec with dependencies and subspecs' do
-      behaves_like cli_spec 'document_moya_podspec',
-                            '--podspec=Moya.podspec'
-    end
-
     describe 'Creates docs with a module name, author name, project URL, ' \
       'xcodebuild options, and github info' do
       behaves_like cli_spec 'document_alamofire',
@@ -203,11 +208,23 @@ describe_cli 'jazzy' do
 
     describe 'Creates Siesta docs' do
       behaves_like cli_spec 'document_siesta',
-                            '--output api-docs' # Siesta already has Docs/
+                            # Siesta already has Docs/
+                            '--output api-docs',
+                            # Use the default Swift version rather than the
+                            # specified 4.0
+                            '--swift-version='
     end
 
     describe 'Creates docs for Swift project with a variety of contents' do
       behaves_like cli_spec 'misc_jazzy_features'
     end
-  end
+  end if !spec_subset || spec_subset == 'swift'
+
+  describe 'jazzy cocoapods' do
+    configure_cocoapods
+    describe 'Creates docs for a podspec with dependencies and subspecs' do
+      behaves_like cli_spec 'document_moya_podspec',
+                            '--podspec=Moya.podspec'
+    end
+  end if !spec_subset || spec_subset == 'cocoapods'
 end

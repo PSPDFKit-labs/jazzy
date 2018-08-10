@@ -49,11 +49,32 @@ module Jazzy
       namespace_path.map(&:name).join('.')
     end
 
+    # :name doesn't include any generic type params.
+    # This regexp matches any generic type params in parent names.
+    def fully_qualified_name_regexp
+      Regexp.new(namespace_path.map(&:name)
+                               .map { |n| Regexp.escape(n) }
+                               .join('(?:<.*?>)?\.'))
+    end
+
     # If this declaration is an objc category, returns an array with the name
     # of the extended objc class and the category name itself, i.e.
     # ["NSString", "MyMethods"], nil otherwise.
     def objc_category_name
       name.split(/[\(\)]/) if type.objc_category?
+    end
+
+    def display_declaration
+      if Config.instance.hide_declarations == 'objc'
+        other_language_declaration
+      else
+        declaration
+      end
+    end
+
+    def display_other_language_declaration
+      other_language_declaration unless
+        %w[swift objc].include? Config.instance.hide_declarations
     end
 
     attr_accessor :file
@@ -62,6 +83,7 @@ module Jazzy
     attr_accessor :usr
     attr_accessor :modulename
     attr_accessor :name
+    attr_accessor :objc_name
     attr_accessor :declaration
     attr_accessor :other_language_declaration
     attr_accessor :abstract
@@ -76,15 +98,12 @@ module Jazzy
     attr_accessor :start_line
     attr_accessor :end_line
     attr_accessor :nav_order
+    attr_accessor :url_name
     attr_accessor :deprecated
     attr_accessor :deprecation_message
     attr_accessor :unavailable
     attr_accessor :unavailable_message
-
-    def overview
-      "#{alternative_abstract}\n\n#{abstract}\n\n#{discussion}".strip
-    end
-
+    
     def alternative_abstract
       if file = alternative_abstract_file
         Pathname(file).read
@@ -93,7 +112,8 @@ module Jazzy
 
     def alternative_abstract_file
       abstract_glob.select do |f|
-        File.basename(f).split('.').first == name
+        # allow Structs.md or Structures.md
+        [name, url_name].include?(File.basename(f).split('.').first)
       end.first
     end
 

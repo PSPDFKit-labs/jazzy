@@ -1,7 +1,5 @@
 require 'fileutils'
 require 'mustache'
-require 'uri'
-require 'net/http'
 require 'pathname'
 require 'sass'
 
@@ -39,13 +37,14 @@ module Jazzy
           # FIXME: include arbitrarily nested extensible types
           [{ name: child.name, url: child.url }] +
             Array(child.children.select do |sub_child|
-              sub_child.type.swift_extensible?
+              sub_child.type.swift_extensible? || sub_child.type.extension?
             end).map do |sub_child|
               { name: "– #{sub_child.name}", url: sub_child.url }
             end
         end
         {
           section: doc.name,
+          url: doc.url,
           children: children,
         }
       end
@@ -133,7 +132,7 @@ module Jazzy
 
       DocsetBuilder.new(output_dir, source_module).build!
 
-      download_badge(source_module.doc_coverage, options)
+      generate_badge(source_module.doc_coverage, options)
 
       friendly_path = relative_path_if_inside(output_dir, Pathname.pwd)
       puts "jam out ♪♫ to your fresh new docs in `#{friendly_path}`"
@@ -164,7 +163,7 @@ module Jazzy
     # @param [Config] options Build options
     # @return [SourceModule] the documented source module
     def self.build_docs_for_sourcekitten_output(sourcekitten_output, options)
-      (docs, coverage, undocumented) = SourceKitten.parse(
+      (docs, stats) = SourceKitten.parse(
         sourcekitten_output,
         options.min_acl,
         options.skip_undocumented,
@@ -172,11 +171,8 @@ module Jazzy
       )
 
       prepare_output_dir(options.output, options.clean)
-      write_lint_report(undocumented, options)
 
-      puts "#{coverage}\% documentation coverage " \
-        "with #{undocumented.count} undocumented symbol" \
-        "#{undocumented.count == 1 ? '' : 's'}"
+      stats.report
 
       puts "Undocumented symbols:"
       undocumented.each do |declaration|
@@ -184,8 +180,10 @@ module Jazzy
       end
 
       unless options.skip_documentation
-        build_site(docs, coverage, options)
+        build_site(docs, stats.doc_coverage, options)
       end
+
+      write_lint_report(stats.undocumented_decls, options)
     end
 
     def self.relative_path_if_inside(path, base_path)
@@ -235,6 +233,11 @@ module Jazzy
       end
     end
 
+    def self.render(doc_model, markdown)
+      html = Markdown.render(markdown)
+      SourceKitten.autolink_document(html, doc_model)
+    end
+
     # Build Mustache document from a markdown source file
     # @param [Config] options Build options
     # @param [Hash] doc_model Parsed doc. @see SourceKitten.parse
@@ -245,7 +248,7 @@ module Jazzy
       doc = Doc.new # Mustache model instance
       name = doc_model.name == 'index' ? source_module.name : doc_model.name
       doc[:name] = name
-      doc[:overview] = Jazzy.markdown.render(doc_model.content(source_module))
+      doc[:overview] = render(doc_model, doc_model.content(source_module))
       doc[:custom_head] = Config.instance.custom_head
       doc[:disable_search] = Config.instance.disable_search
       doc[:doc_coverage] = source_module.doc_coverage unless
@@ -257,7 +260,7 @@ module Jazzy
       doc[:dash_url] = source_module.dash_url
       doc[:path_to_root] = path_to_root
       doc[:hide_name] = true
-      doc.render
+      doc.render.gsub(ELIDED_AUTOLINK_TOKEN, path_to_root)
     end
 
     # Returns the appropriate color for the provided percentage,
@@ -265,38 +268,68 @@ module Jazzy
     # @param [Number] coverage The documentation coverage percentage
     def self.color_for_coverage(coverage)
       if coverage < 10
-        'red'
+        'e05d44' # red
       elsif coverage < 30
-        'orange'
+        'fe7d37' # orange
       elsif coverage < 60
-        'yellow'
+        'dfb317' # yellow
       elsif coverage < 85
-        'yellowgreen'
+        'a4a61d' # yellowgreen
       elsif coverage < 90
-        'green'
+        '97CA00' # green
       else
-        'brightgreen'
+        '4c1' # brightgreen
       end
     end
 
-    # Downloads an SVG from shields.io displaying the documentation percentage
+    # rubocop:disable Metrics/MethodLength
+
+    # Generates an SVG similar to those from shields.io displaying the
+    # documentation percentage
     # @param [Number] coverage The documentation coverage percentage
     # @param [Config] options Build options
-    def self.download_badge(coverage, options)
-      if options.hide_documentation_coverage
-        return
-      end
-      warn 'downloading coverage badge'
-      color = color_for_coverage(coverage)
-      uri = URI.parse('https://img.shields.io')
-      url_path = "/badge/documentation-#{coverage}%25-#{color}.svg"
-      Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
-        resp = http.get url_path
-        File.open(options.output + 'badge.svg', 'wb') do |file|
-          file.write resp.body
-        end
-      end
+    def self.generate_badge(coverage, options)
+      return if options.hide_documentation_coverage
+
+      coverage_length = coverage.to_s.size.succ
+      percent_string_length = coverage_length * 80 + 10
+      percent_string_offset = coverage_length * 40 + 975
+      width = coverage_length * 8 + 104
+      svg = <<-SVG.gsub(/^ {8}/, '')
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="#{width}" height="20">
+          <linearGradient id="b" x2="0" y2="100%">
+            <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+            <stop offset="1" stop-opacity=".1"/>
+          </linearGradient>
+          <clipPath id="a">
+            <rect width="#{width}" height="20" rx="3" fill="#fff"/>
+          </clipPath>
+          <g clip-path="url(#a)">
+            <path fill="#555" d="M0 0h93v20H0z"/>
+            <path fill="##{color_for_coverage(coverage)}" d="M93 0h#{percent_string_length / 10 + 10}v20H93z"/>
+            <path fill="url(#b)" d="M0 0h#{width}v20H0z"/>
+          </g>
+          <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="110">
+            <text x="475" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="830">
+              documentation
+            </text>
+            <text x="475" y="140" transform="scale(.1)" textLength="830">
+              documentation
+            </text>
+            <text x="#{percent_string_offset}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="#{percent_string_length}">
+              #{coverage}%
+            </text>
+            <text x="#{percent_string_offset}" y="140" transform="scale(.1)" textLength="#{percent_string_length}">
+              #{coverage}%
+            </text>
+          </g>
+        </svg>
+      SVG
+
+      badge_output = options.output + 'badge.svg'
+      File.open(badge_output, 'w') { |f| f << svg }
     end
+    # rubocop:enable Metrics/MethodLength
 
     def self.should_link_to_github(file)
       return unless file
@@ -328,17 +361,17 @@ module Jazzy
     def self.render_item(item, source_module)
       # Combine abstract and discussion into abstract
       abstract = (item.abstract || '') + (item.discussion || '')
-      item_render = {
+      {
         name:                       item.name,
-        abstract:                   render_markdown(abstract),
-        declaration:                item.declaration,
-        other_language_declaration: item.other_language_declaration,
+        abstract:                   abstract,
+        declaration:                item.display_declaration,
+        other_language_declaration: item.display_other_language_declaration,
         usr:                        item.usr,
         dash_type:                  item.type.dash_type,
         github_token_url:           gh_token_url(item, source_module),
-        default_impl_abstract:      render_markdown(item.default_impl_abstract),
+        default_impl_abstract:      item.default_impl_abstract,
         from_protocol_extension:    item.from_protocol_extension,
-        return:                     render_markdown(item.return),
+        return:                     item.return,
         parameters:                 (item.parameters if item.parameters.any?),
         url:                        (item.url if item.children.any?),
         start_line:                 item.start_line,
@@ -347,11 +380,6 @@ module Jazzy
         unavailable_message:        (item.unavailable_message if item.unavailable),
         usage_discouraged:          item.deprecated || item.unavailable,
       }
-      item_render.reject { |_, v| v.nil? }
-    end
-
-    def self.render_markdown(markdown)
-      Jazzy.markdown.render(markdown) if markdown
     end
 
     def self.make_task(mark, uid, items)
@@ -396,6 +424,12 @@ module Jazzy
         return document_markdown(source_module, doc_model, path_to_root)
       end
 
+      overview = (doc_model.abstract || '') + (doc_model.discussion || '')
+      alternative_abstract = doc_model.alternative_abstract
+      if alternative_abstract
+        overview = render(doc_model, alternative_abstract) + overview
+      end
+
       doc = Doc.new # Mustache model instance
       doc[:custom_head] = Config.instance.custom_head
       doc[:disable_search] = Config.instance.disable_search
@@ -404,8 +438,8 @@ module Jazzy
       doc[:name] = doc_model.name
       doc[:kind] = doc_model.type.name
       doc[:dash_type] = doc_model.type.dash_type
-      doc[:declaration] = doc_model.declaration
-      doc[:overview] = Jazzy.markdown.render(doc_model.overview)
+      doc[:declaration] = doc_model.display_declaration
+      doc[:overview] = overview
       doc[:structure] = source_module.doc_structure
       doc[:tasks] = render_tasks(source_module, doc_model.children)
       doc[:module_name] = source_module.name

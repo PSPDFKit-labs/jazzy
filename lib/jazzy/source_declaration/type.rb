@@ -5,7 +5,7 @@ module Jazzy
     # rubocop:disable Metrics/ClassLength
     class Type
       def self.all
-        TYPES.keys.map { |k| new(k) }
+        TYPES.keys.map { |k| new(k) }.reject { |t| t.name.nil? }
       end
 
       attr_reader :kind
@@ -23,6 +23,11 @@ module Jazzy
         @type && @type[:jazzy]
       end
 
+      # name to use for type subdirectory in URLs for back-compatibility
+      def url_name
+        @type && (@type[:url] || @type[:jazzy])
+      end
+
       def name_controlled_manually?
         !kind.start_with?('source')
         # "'source'.lang..." for Swift
@@ -34,9 +39,26 @@ module Jazzy
         name.pluralize
       end
 
+      def plural_url_name
+        url_name.pluralize
+      end
+
+      def objc_mark?
+        kind == 'sourcekitten.source.lang.objc.mark'
+      end
+
+      # covers MARK: TODO: FIXME: comments
+      def swift_mark?
+        kind == 'source.lang.swift.syntaxtype.comment.mark'
+      end
+
       def mark?
-        kind == 'source.lang.swift.syntaxtype.comment.mark' ||
-          kind == 'sourcekitten.source.lang.objc.mark'
+        objc_mark? || swift_mark?
+      end
+
+      # mark that should start a new task section
+      def task_mark?(name)
+        objc_mark? || (swift_mark? && name.start_with?('MARK: '))
       end
 
       def objc_enum?
@@ -64,7 +86,7 @@ module Jazzy
       end
 
       def should_document?
-        declaration? && !param?
+        declaration? && !param? && !generic_type_param?
       end
 
       def declaration?
@@ -95,6 +117,10 @@ module Jazzy
           kind == 'source.lang.swift.decl.var.local'
       end
 
+      def generic_type_param?
+        kind == 'source.lang.swift.decl.generic_type_param'
+      end
+
       def objc_unexposed?
         kind == 'sourcekitten.source.lang.objc.decl.unexposed'
       end
@@ -119,6 +145,11 @@ module Jazzy
           dash: 'Guide',
         }.freeze,
 
+        'Overview' => {
+          jazzy: nil,
+          dash: 'Section',
+        }.freeze,
+
         # Objective-C
         'sourcekitten.source.lang.objc.decl.unexposed' => {
           jazzy: 'Unexposed',
@@ -137,11 +168,12 @@ module Jazzy
           dash: 'Constant',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.enum' => {
-          jazzy: 'Enum',
+          jazzy: 'Enumeration',
+          url: 'Enum',
           dash: 'Enum',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.enumcase' => {
-          jazzy: 'Enum Case',
+          jazzy: 'Enumeration Case',
           dash: 'Case',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.initializer' => {
@@ -177,7 +209,8 @@ module Jazzy
           dash: 'Function',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.struct' => {
-          jazzy: 'Struct',
+          jazzy: 'Structure',
+          url: 'Struct',
           dash: 'Struct',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.field' => {
@@ -185,7 +218,7 @@ module Jazzy
           dash: 'Field',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.ivar' => {
-          jazzy: 'Ivar',
+          jazzy: 'Instance Variable',
           dash: 'Ivar',
         }.freeze,
         'sourcekitten.source.lang.objc.module.import' => {
@@ -195,27 +228,27 @@ module Jazzy
 
         # Swift
         'source.lang.swift.decl.function.accessor.address' => {
-          jazzy: 'Address Accessor',
+          jazzy: 'Addressor',
           dash: 'Function',
         }.freeze,
         'source.lang.swift.decl.function.accessor.didset' => {
-          jazzy: 'DidSet Accessor',
+          jazzy: 'didSet Observer',
           dash: 'Function',
         }.freeze,
         'source.lang.swift.decl.function.accessor.getter' => {
-          jazzy: 'Getter Accessor',
+          jazzy: 'Getter',
           dash: 'Function',
         }.freeze,
         'source.lang.swift.decl.function.accessor.mutableaddress' => {
-          jazzy: 'Mutable Address Accessor',
+          jazzy: 'Mutable Addressor',
           dash: 'Function',
         }.freeze,
         'source.lang.swift.decl.function.accessor.setter' => {
-          jazzy: 'Setter Accessor',
+          jazzy: 'Setter',
           dash: 'Function',
         }.freeze,
         'source.lang.swift.decl.function.accessor.willset' => {
-          jazzy: 'WillSet Accessor',
+          jazzy: 'willSet Observer',
           dash: 'Function',
         }.freeze,
         'source.lang.swift.decl.function.operator' => {
@@ -247,11 +280,11 @@ module Jazzy
           dash: 'Class',
         }.freeze,
         'source.lang.swift.decl.function.constructor' => {
-          jazzy: 'Constructor',
+          jazzy: 'Initializer',
           dash: 'Constructor',
         }.freeze,
         'source.lang.swift.decl.function.destructor' => {
-          jazzy: 'Destructor',
+          jazzy: 'Deinitializer',
           dash: 'Method',
         }.freeze,
         'source.lang.swift.decl.var.global' => {
@@ -259,15 +292,16 @@ module Jazzy
           dash: 'Global',
         }.freeze,
         'source.lang.swift.decl.enumcase' => {
-          jazzy: 'Enum Case',
+          jazzy: 'Enumeration Case',
           dash: 'Case',
         }.freeze,
         'source.lang.swift.decl.enumelement' => {
-          jazzy: 'Enum Element',
+          jazzy: 'Enumeration Element',
           dash: 'Element',
         }.freeze,
         'source.lang.swift.decl.enum' => {
-          jazzy: 'Enum',
+          jazzy: 'Enumeration',
+          url: 'Enum',
           dash: 'Enum',
         }.freeze,
         'source.lang.swift.decl.extension' => {
@@ -279,7 +313,7 @@ module Jazzy
           dash: 'Extension',
         }.freeze,
         'source.lang.swift.decl.extension.enum' => {
-          jazzy: 'Enum Extension',
+          jazzy: 'Enumeration Extension',
           dash: 'Extension',
         }.freeze,
         'source.lang.swift.decl.extension.protocol' => {
@@ -287,7 +321,7 @@ module Jazzy
           dash: 'Extension',
         }.freeze,
         'source.lang.swift.decl.extension.struct' => {
-          jazzy: 'Struct Extension',
+          jazzy: 'Structure Extension',
           dash: 'Extension',
         }.freeze,
         'source.lang.swift.decl.function.free' => {
@@ -323,7 +357,8 @@ module Jazzy
           dash: 'Variable',
         }.freeze,
         'source.lang.swift.decl.struct' => {
-          jazzy: 'Struct',
+          jazzy: 'Structure',
+          url: 'Struct',
           dash: 'Struct',
         }.freeze,
         'source.lang.swift.decl.function.subscript' => {
@@ -331,7 +366,8 @@ module Jazzy
           dash: 'Method',
         }.freeze,
         'source.lang.swift.decl.typealias' => {
-          jazzy: 'Typealias',
+          jazzy: 'Type Alias',
+          url: 'Typealias',
           dash: 'Alias',
         }.freeze,
         'source.lang.swift.decl.generic_type_param' => {
