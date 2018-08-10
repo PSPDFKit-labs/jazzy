@@ -301,12 +301,29 @@ module Jazzy
       declaration
     end
 
-    def self.parameters(doc, discovered)
+    def self.make_paragraphs(doc, key)
+      return nil unless doc[key]
+      doc[key].map do |p|
+        if para = p['Para']
+          Markdown.render(para)
+        elsif code = p['Verbatim'] || p['CodeListing']
+          Markdown.render("```\n#{code}```\n")
+        else
+          warn "Jazzy could not recognize the `#{p.keys.first}` tag. " \
+               'Please report this by filing an issue at ' \
+               'https://github.com/realm/jazzy/issues along with the comment ' \
+               'including this tag.'
+          Markdown.render(p.values.first)
+        end
+      end.join
+    end
+
+    def self.parameters(doc)
       (doc['key.doc.parameters'] || []).map do |p|
         name = p['name']
         {
           name: name,
-          discussion: discovered[name],
+          discussion: make_paragraphs(p, 'discussion'),
         }
       end.reject { |param| param[:discussion].nil? }
     end
@@ -335,7 +352,7 @@ module Jazzy
       declaration.return = Markdown.rendered_returns
       declaration.deprecation_message = Markdown.render(doc['key.deprecation_message'] || '')
       declaration.unavailable_message = Markdown.render(doc['key.unavailable_message'] || '')
-      declaration.parameters = parameters(doc, Markdown.rendered_parameters)
+      declaration.parameters = parameters(doc)
 
       @stats.add_documented
     end
