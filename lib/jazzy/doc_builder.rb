@@ -175,7 +175,7 @@ module Jazzy
       stats.report
 
       puts "Undocumented symbols:"
-      undocumented.each do |declaration|
+      stats.undocumented_decls.each do |declaration|
         puts declaration.fully_qualified_name
       end
 
