@@ -168,7 +168,7 @@ module Jazzy
           dash: 'Constant',
         }.freeze,
         'sourcekitten.source.lang.objc.decl.enum' => {
-          jazzy: 'Enumeration',
+          jazzy: 'Enum',
           url: 'Enum',
           dash: 'Enum',
         }.freeze,
