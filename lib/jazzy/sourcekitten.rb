@@ -333,8 +333,8 @@ module Jazzy
       declaration.discussion = ''
 
       declaration.return = Markdown.rendered_returns
-      declaration.deprecation_message = Jazzy.markdown.render(doc['key.deprecation_message'] || '')
-      declaration.unavailable_message = Jazzy.markdown.render(doc['key.unavailable_message'] || '')
+      declaration.deprecation_message = Markdown.render(doc['key.deprecation_message'] || '')
+      declaration.unavailable_message = Markdown.render(doc['key.unavailable_message'] || '')
       declaration.parameters = parameters(doc, Markdown.rendered_parameters)
 
       @stats.add_documented
