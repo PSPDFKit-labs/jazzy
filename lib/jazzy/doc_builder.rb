@@ -257,6 +257,8 @@ module Jazzy
       doc[:module_name] = source_module.name
       doc[:author_name] = source_module.author_name
       doc[:github_url] = source_module.github_url
+      doc[:root_url] = source_module.root_url
+      doc[:url] = doc_model.url
       doc[:dash_url] = source_module.dash_url
       doc[:path_to_root] = path_to_root
       doc[:hide_name] = true
@@ -445,6 +447,8 @@ module Jazzy
       doc[:module_name] = source_module.name
       doc[:author_name] = source_module.author_name
       doc[:github_url] = source_module.github_url
+      doc[:root_url] = source_module.root_url
+      doc[:url] = doc_model.url
       doc[:dash_url] = source_module.dash_url
       doc[:path_to_root] = path_to_root
       doc.render.gsub(ELIDED_AUTOLINK_TOKEN, path_to_root)
