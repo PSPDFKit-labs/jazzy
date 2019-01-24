@@ -14,6 +14,7 @@ module Jazzy
     attr_accessor :github_url
     attr_accessor :github_file_prefix
     attr_accessor :author_url
+    attr_accessor :root_url
     attr_accessor :dash_url
 
     def initialize(options, docs, doc_structure, doc_coverage)
@@ -26,6 +27,7 @@ module Jazzy
       self.github_url = options.github_url
       self.github_file_prefix = options.github_file_prefix
       self.author_url = options.author_url
+      self.root_url = options.root_url
       return unless options.dash_url
       self.dash_url = "dash-feed://#{URI.encode(options.dash_url.to_s, /\W/)}"
     end
