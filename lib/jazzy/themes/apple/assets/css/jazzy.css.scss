@@ -152,7 +152,7 @@ header {
   background-color: $bg_color;
   position: fixed;
   width: 100%;
-  z-index: 1;
+  z-index: 2;
   img {
     padding-right: 6px;
     vertical-align: -4px;
@@ -177,7 +177,7 @@ header {
   padding-top: $breadcrumb_padding_top;
   position: fixed;
   width: 100%;
-  z-index: 1;
+  z-index: 2;
   margin-top: $header_height;
   #carat {
     height: 10px;
@@ -240,7 +240,7 @@ header {
   margin-left: $content_body_left_offset;
   position: absolute;
   overflow: hidden;
-  padding-bottom: 60px;
+  padding-bottom: 20px;
   top: $content_top_offset;
   width: $content_wrapper_width - $content_body_left_offset;
   p, a, code, em, ul, table, blockquote {
@@ -268,6 +268,17 @@ header {
       display: block;
       padding-top: $content_top_offset;
       margin: -$content_top_offset 0 0;
+    }
+  }
+  .section-name {
+    p {
+       margin-bottom: inherit;
+       line-height: inherit;
+    }
+    code {
+      background-color: inherit;
+      padding: inherit;
+      color: inherit;
     }
   }
 }
@@ -317,6 +328,29 @@ header {
   }
 }
 
+.section-name-container {
+  position: relative;
+  display: inline-block;
+
+  .section-name-link {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    margin-bottom: 0;
+  }
+
+  .section-name {
+    position: relative;
+    pointer-events: none;
+    z-index: 1;
+    a {
+      pointer-events: auto;
+    }
+  }
+}
+
 .item {
   padding-top: 8px;
   width: 100%;
@@ -333,10 +367,17 @@ header {
     background-color: transparent;
     padding: 0;
   }
-  .token {
+  .token, .direct-link {
     padding-left: 3px;
     margin-left: 15px;
     font-size: 11.9px;
+    transition: all 300ms;
+  }
+  .token-open {
+    margin-left: 0px;
+  }
+  .discouraged {
+    text-decoration: line-through;
   }
   .declaration-note {
     font-size: .85em;
@@ -412,7 +453,7 @@ header {
   }
 }
 
-.aside-warning {
+.aside-warning, .aside-deprecated, .aside-unavailable {
   border-left: $aside_warning_border;
   .aside-title {
     color: $aside_warning_color;
@@ -446,8 +487,9 @@ header {
 }
 
 #footer {
-  position: absolute;
-  bottom: 10px;
+  position: relative;
+  top: 10px;
+  bottom: 0px;
   margin-left: 25px;
   p {
     margin: 0;

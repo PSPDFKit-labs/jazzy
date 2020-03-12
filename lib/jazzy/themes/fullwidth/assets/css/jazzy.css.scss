@@ -154,8 +154,14 @@ a {
     outline: 0;
     text-decoration: underline;
   }
-}
 
+  &.discouraged {
+    text-decoration: line-through;
+    &:hover, &:focus {
+      text-decoration: underline line-through;
+    }
+  }
+}
 
 // ----- Tables
 
@@ -195,13 +201,15 @@ code {
   font-family: $code_font;
 }
 
-p, li {
-  > code {
-    background: $code_bg_color;
-    padding: .2em;
-    &:before, &:after {
-      letter-spacing: -.2em;
-      content: "\00a0";
+.item-container, .top-matter {
+  p, li {
+    > code {
+      background: $code_bg_color;
+      padding: .2em;
+      &:before, &:after {
+        letter-spacing: -.2em;
+        content: "\00a0";
+      }
     }
   }
 }
@@ -361,6 +369,10 @@ pre code {
 .section-name {
   color: #666;
   display: block;
+
+  p {
+    margin-bottom: inherit;
+  }
 }
 
 .declaration .highlight {
@@ -388,6 +400,28 @@ pre code {
   }
 }
 
+.section-name-container {
+  position: relative;
+
+  .section-name-link {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    margin-bottom: 0;
+  }
+
+  .section-name {
+    position: relative;
+    pointer-events: none;
+    z-index: 1;
+    a {
+      pointer-events: auto;
+    }
+  }
+}
+
 .item-container {
   padding: 0;
 }
@@ -404,7 +438,7 @@ pre code {
     }
   }
 
-  .token {
+  .token, .direct-link {
     padding-left: 3px;
     margin-left: 0px;
     font-size: 1rem;
@@ -479,7 +513,7 @@ pre code {
   }
 }
 
-.aside-warning {
+.aside-warning, .aside-deprecated, .aside-unavailable {
   border-left: $aside_warning_border;
   .aside-title {
     color: $aside_warning_color;

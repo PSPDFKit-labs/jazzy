@@ -1,7 +1,5 @@
 ![jazzy](images/logo.jpg)
 
-![analytics](https://ga-beacon.appspot.com/UA-50247013-2/jazzy/README?pixel)
-
 [![Build Status](https://circleci.com/gh/realm/jazzy.svg?style=svg)](https://circleci.com/gh/realm/jazzy)
 
 *jazzy is a command-line utility that generates documentation for Swift or Objective-C*
@@ -10,7 +8,7 @@
 
 Both Swift and Objective-C projects are supported.
 
-*Objective-C support was recently added, so please report any issues you find.*
+*SwiftPM support was recently added, so please report any issues you find.*
 
 Instead of parsing your source files, `jazzy` hooks into [Clang][clang] and
 [SourceKit][sourcekit] to use the [AST][ast] representation of your code and
@@ -25,9 +23,11 @@ unacceptable behavior to [info@realm.io](mailto:info@realm.io).
 
 ## Requirements
 
-* A version of [Xcode][xcode] capable of building the project you wish to
-document. It must be installed in a location indexed by Spotlight for the
-`--swift-version` configuration option to succeed.
+You need development tools to build the project you wish to document.  Jazzy supports
+both [Xcode][xcode] and [Swift Package Manager][spm] projects.
+
+Jazzy expects to be running on __macOS__.  See [below](#linux) for tips to run Jazzy
+on Linux.
 
 ## Installation
 
@@ -35,17 +35,17 @@ document. It must be installed in a location indexed by Spotlight for the
 [sudo] gem install jazzy
 ```
 
-The Xcode command-line developer tools must be installed to successfully build
-the gems that `jazzy` depends on: try `xcode-select --install` if you see build
-errors.
+See [Installation Problems](#installation-problems) for solutions to some
+common problems.
 
 ## Usage
 
 Run `jazzy` from your command line. Run `jazzy -h` for a list of additional options.
 
 If your Swift module is the first thing to build, and it builds fine when running
-`xcodebuild` without any arguments from the root of your project, then just running
-`jazzy` (without any arguments) from the root of your project should succeed too!
+`xcodebuild` or `swift build` without any arguments from the root of your project, then
+just running `jazzy` (without any arguments) from the root of your project should
+succeed too!
 
 You can set options for your project’s documentation in a configuration file,
 `.jazzy.yaml` by default. For a detailed explanation and an exhaustive list of
@@ -86,11 +86,20 @@ jazzy \
   --github_url https://github.com/realm/realm-cocoa \
   --github-file-prefix https://github.com/realm/realm-cocoa/tree/v0.96.2 \
   --module-version 0.96.2 \
-  --xcodebuild-arguments -scheme,RealmSwift \
+  --build-tool-arguments -scheme,RealmSwift \
   --module RealmSwift \
   --root-url https://realm.io/docs/swift/0.96.2/api/ \
   --output docs/swift_output \
   --theme docs/themes
+```
+
+This is how docs are generated for a project that uses the Swift Package Manager:
+
+```shell
+jazzy \
+  --module DeckOfPlayingCards \
+  --swift-build-tool spm \
+  --build-tool-arguments -Xswiftc,-swift-version,-Xswiftc,5
 ```
 
 ### Objective-C
@@ -119,7 +128,7 @@ jazzy \
   --github_url https://github.com/realm/realm-cocoa \
   --github-file-prefix https://github.com/realm/realm-cocoa/tree/v2.2.0 \
   --module-version 2.2.0 \
-  --xcodebuild-arguments --objc,Realm/Realm.h,--,-x,objective-c,-isysroot,$(xcrun --show-sdk-path),-I,$(pwd) \
+  --build-tool-arguments --objc,Realm/Realm.h,--,-x,objective-c,-isysroot,$(xcrun --show-sdk-path),-I,$(pwd) \
   --module Realm \
   --root-url https://realm.io/docs/objc/2.2.0/api/ \
   --output docs/objc_output \
@@ -139,6 +148,33 @@ jazzy \
   --umbrella-header AFNetworking/AFNetworking.h \
   --framework-root . \
   --module AFNetworking
+```
+
+### Mixed Objective-C / Swift
+
+*This feature is new and has some rough edges.*
+
+To generate documentation for a mixed Swift and Objective-C project you must first
+generate two [SourceKitten][sourcekitten] files: one for Swift and one for Objective-C.
+
+Then pass these files to Jazzy together using `--sourcekitten-sourcefile`.
+
+#### Example
+
+This is how docs are generated from an Xcode project for a module containing both
+Swift and Objective-C files:
+
+```shell
+# Generate Swift SourceKitten output
+sourcekitten doc -- -workspace MyProject.xcworkspace -scheme MyScheme > swiftDoc.json
+
+# Generate Objective-C SourceKitten output
+sourcekitten doc --objc $(pwd)/MyProject/MyProject.h \
+      -- -x objective-c  -isysroot $(xcrun --show-sdk-path --sdk iphonesimulator) \
+      -I $(pwd) -fmodules > objcDoc.json
+
+# Feed both outputs to Jazzy as a comma-separated list
+jazzy --sourcekitten-sourcefile swiftDoc.json,objcDoc.json
 ```
 
 ### Themes
@@ -168,7 +204,7 @@ Any files found matching the file pattern will be parsed and included as a docum
 
 There are a few limitations:
 - File names must be unique from source files.
-- Readme should be specified separately using the `readme_path` option.
+- Readme should be specified separately using the `readme` option.
 
 ### Section description abstracts
 
@@ -222,13 +258,80 @@ Note that the `--include` option is applied before the `--exclude` option. For e
 Declarations with a documentation comment containing `:nodoc:` are excluded from the
 documentation.
 
+### Choosing the Swift language version
+
+Jazzy normally uses the Swift compiler from the Xcode currently configured by
+`xcode-select`.  Use the `--swift-version` flag to compile with a different
+Xcode.
+
+The value you pass to `--swift-version` must be the Swift language version given
+by `swift --version` in the Xcode you want to use.
+
+For example to use Xcode 9.4:
+```shell
+jazzy --swift-version 4.1.2
+```
+
+## Linux
+
+Jazzy uses [SourceKitten][sourcekitten] to communicate with the Swift build
+environment and compiler.  The `sourcekitten` binary included in the Jazzy gem
+is built for macOS and so does not run on other operating systems.
+
+To use Jazzy on Linux you first need to install and build `sourcekitten`
+following instructions from [SourceKitten's GitHub repository][sourcekitten].
+
+Then to generate documentation for a SwiftPM project, instead of running just
+`jazzy` do:
+```shell
+sourcekitten doc --spm > doc.json
+jazzy --sourcekitten-sourcefile doc.json
+```
+
+We hope to improve this process in the future.
+
 ## Troubleshooting
 
-#### Swift
+### Swift
 
 **Only extensions are listed in the documentation?**
 
 Check the `--min-acl` setting -- see [above](#controlling-what-is-documented).
+
+**Unable to find an Xcode with swift version X**
+
+1. The value passed with `--swift-version` must exactly match the version
+   number from `swiftc --version`.  For example Xcode 10.1 needs
+   `--swift-version 4.2.1`.  See [the flag documentation](#choosing-the-swift-language-version).
+2. The Xcode you want to use must be in the Spotlight index.  You can check
+   this using `mdfind 'kMDItemCFBundleIdentifier == com.apple.dt.Xcode'`.
+   Some users have reported this issue being fixed by a reboot; `mdutil -E`
+   may also help.  If none of these work then you can set the `DEVELOPER_DIR`
+   environment variable to point to the Xcode you want before running Jazzy
+   without the `--swift-version` flag.
+
+### Installation Problems
+
+**Can't find header files / clang**
+
+Some of the Ruby gems that Jazzy depends on have native C extensions.  This
+means you need the Xcode command-line developer tools installed to build
+them: run `xcode-select --install` to install the tools.
+
+**/Applications/Xcode: No such file or directory**
+
+The path of your active Xcode installation must not contain spaces.  So
+`/Applications/Xcode.app/` is fine, `/Applications/Xcode-10.2.app/` is fine,
+but `/Applications/Xcode 10.2.app/` is not.  This restriction applies only
+when *installing* Jazzy, not running it.
+
+### MacOS Before 10.14.4
+
+Starting with Jazzy 0.10.0, if you see an error similar to `dyld: Symbol not found: _$s11SubSequenceSlTl` then you need to install the [Swift 5 Runtime Support for Command Line Tools](https://support.apple.com/kb/DL1998).
+
+Alternatively, you can:
+* Update to macOS 10.14.4 or later; or
+* Install Xcode 10.2 or later at `/Applications/Xcode.app`.
 
 ## Development
 
@@ -255,7 +358,7 @@ Instructions to build SourceKitten from source can be found at
 - Leverage modern HTML templating ([Mustache][mustache])
 - Leverage the power and accuracy of the [Clang AST][ast] and [SourceKit][sourcekit]
 - Support for Dash docsets
-- Support Swift and Objective-C (*mixed projects are a work in progress*)
+- Support Swift and Objective-C
 
 ## License
 
@@ -280,3 +383,4 @@ read [our blog](https://realm.io/news) or say hi on twitter
 [SourceKitten]: https://github.com/jpsim/SourceKitten "SourceKitten"
 [bundler]: https://rubygems.org/gems/bundler
 [mustache]: https://mustache.github.io "Mustache"
+[spm]: https://swift.org/package-manager/ "Swift Package Manager"

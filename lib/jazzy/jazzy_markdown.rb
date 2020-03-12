@@ -11,7 +11,7 @@ module Jazzy
       attr_accessor :default_language
 
       def header(text, header_level)
-        text_slug = text.gsub(/[^\w]+/, '-')
+        text_slug = text.gsub(/[^[[:word:]]]+/, '-')
                         .downcase
                         .sub(/^-/, '')
                         .sub(/-$/, '')
@@ -82,21 +82,21 @@ module Jazzy
 
       def render_aside(type, text)
         <<-HTML
-<div class="aside aside-#{type.underscore.tr('_', '-')}">
+</ul><div class="aside aside-#{type.underscore.tr('_', '-')}">
     <p class="aside-title">#{type.underscore.humanize}</p>
     #{text}
-</div>
+</div><ul>
         HTML
       end
 
       def list(text, list_type)
         elided = text.gsub!(ELIDED_LI_TOKEN, '')
         return if text =~ /\A\s*\Z/ && elided
-        return text if text =~ /class="aside-title"/
         str = "\n"
         str << (list_type == :ordered ? "<ol>\n" : "<ul>\n")
         str << text
         str << (list_type == :ordered ? "</ol>\n" : "</ul>\n")
+        str.gsub(%r{\n?<ul>\n<\/ul>}, '')
       end
 
       def block_code(code, language)
@@ -112,7 +112,6 @@ module Jazzy
       autolink: true,
       fenced_code_blocks: true,
       no_intra_emphasis: true,
-      quote: true,
       strikethrough: true,
       space_after_headers: false,
       tables: true,

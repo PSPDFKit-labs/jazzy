@@ -2,7 +2,6 @@ require 'optparse'
 require 'pathname'
 require 'uri'
 
-require 'jazzy/doc'
 require 'jazzy/podspec_documenter'
 require 'jazzy/source_declaration/access_control_level'
 
@@ -80,6 +79,14 @@ module Jazzy
       @all_config_attrs << Attribute.new(name, **opts)
     end
 
+    def self.alias_config_attr(name, forward, **opts)
+      alias_method name.to_s, forward.to_s
+      alias_method "#{name}=", "#{forward}="
+      alias_method "#{name}_configured", "#{forward}_configured"
+      alias_method "#{name}_configured=", "#{forward}_configured="
+      @all_config_attrs << Attribute.new(name, **opts)
+    end
+
     class << self
       attr_reader :all_config_attrs
     end
@@ -93,6 +100,14 @@ module Jazzy
     def expand_path(path)
       abs_path = expand_glob_path(path)
       Pathname(Dir[abs_path][0] || abs_path) # Use existing filesystem spelling
+    end
+
+    def hide_swift?
+      hide_declarations == 'swift'
+    end
+
+    def hide_objc?
+      hide_declarations == 'objc'
     end
 
     # ──────── Build ────────
@@ -136,9 +151,9 @@ module Jazzy
       command_line: '--hide-declarations [objc|swift] ',
       description: 'Hide declarations in the specified language. Given that ' \
                    'generating Swift docs only generates Swift declarations, ' \
-                   'this is only really useful to display just the Swift ' \
-                   'declarations & names when generating docs for an ' \
-                   'Objective-C framework.',
+                   'this is useful for hiding a specific interface for ' \
+                   'either Objective-C or mixed Objective-C and Swift ' \
+                   'projects.',
       default: ''
 
     config_attr :config_file,
@@ -147,15 +162,21 @@ module Jazzy
                     'Default: .jazzy.yaml in source directory or ancestor'],
       parse: ->(cf) { expand_path(cf) }
 
-    config_attr :xcodebuild_arguments,
-      command_line: ['-x', '--xcodebuild-arguments arg1,arg2,…argN', Array],
-      description: 'Arguments to forward to xcodebuild',
+    config_attr :build_tool_arguments,
+      command_line: ['-b', '--build-tool-arguments arg1,arg2,…argN', Array],
+      description: 'Arguments to forward to xcodebuild, swift build, or ' \
+                   'sourcekitten.',
       default: []
 
+    alias_config_attr :xcodebuild_arguments, :build_tool_arguments,
+      command_line: ['-x', '--xcodebuild-arguments arg1,arg2,…argN', Array],
+      description: 'Back-compatibility alias for build_tool_arguments.'
+
     config_attr :sourcekitten_sourcefile,
-      command_line: ['-s', '--sourcekitten-sourcefile FILEPATH'],
-      description: 'File generated from sourcekitten output to parse',
-      parse: ->(s) { expand_path(s) }
+      command_line: ['-s', '--sourcekitten-sourcefile filepath1,…filepathN',
+                     Array],
+      description: 'File(s) generated from sourcekitten output to parse',
+      parse: ->(paths) { [paths].flatten.map { |path| expand_path(path) } }
 
     config_attr :source_directory,
       command_line: '--source-directory DIRPATH',
@@ -193,6 +214,20 @@ module Jazzy
         end
       end
 
+    SWIFT_BUILD_TOOLS = %w[spm xcodebuild].freeze
+
+    config_attr :swift_build_tool,
+      command_line: "--swift-build-tool #{SWIFT_BUILD_TOOLS.join(' | ')}",
+      description: 'Control whether Jazzy uses Swift Package Manager or '\
+                   'xcodebuild to build the module to be documented.  By '\
+                   'default it uses xcodebuild if there is a .xcodeproj '\
+                   'file in the source directory.',
+      parse: ->(tool) do
+        return tool.to_sym if SWIFT_BUILD_TOOLS.include?(tool)
+        raise "Unsupported swift_build_tool #{tool}, "\
+              "supported values: #{SWIFT_BUILD_TOOLS.join(', ')}"
+      end
+
     # ──────── Metadata ────────
 
     config_attr :author_name,
@@ -213,8 +248,15 @@ module Jazzy
 
     config_attr :version,
       command_line: '--module-version VERSION',
-      description: 'module version. will be used when generating docset',
+      description: 'Version string to use as part of the the default docs '\
+                   'title and inside the docset.',
       default: '1.0'
+
+    config_attr :title,
+      command_line: '--title TITLE',
+      description: 'Title to display at the top of each page, overriding the '\
+                   'default generated from module name and version.',
+      default: ''
 
     config_attr :copyright,
       command_line: '--copyright COPYRIGHT_MARKDOWN',
@@ -312,6 +354,18 @@ module Jazzy
                     'in a custom category appear in generic groups at the end.',
                     'Example: https://git.io/v4Bcp'],
       default: []
+
+    config_attr :custom_categories_unlisted_prefix,
+      description: "Prefix for navigation section names that aren't "\
+                   'explicitly listed in `custom_categories`.',
+      default: 'Other '
+
+    config_attr :hide_unlisted_documentation,
+      command_line: '--[no-]hide-unlisted-documentation',
+      description: "Don't include documentation in the sidebar from the "\
+                   "`documentation` config value that aren't explicitly "\
+                   'listed in `custom_categories`.',
+      default: false
 
     config_attr :custom_head,
       command_line: '--head HTML',
