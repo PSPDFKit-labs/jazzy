@@ -47,6 +47,10 @@ If your Swift module is the first thing to build, and it builds fine when runnin
 just running `jazzy` (without any arguments) from the root of your project should
 succeed too!
 
+If Jazzy generates docs for the wrong module then use `--module` to tell it which
+one you'd prefer.  If this doesn't help, and you're using Xcode, then try passing
+extra arguments to `xcodebuild`, for example `jazzy --build-tool-arguments -target,MyTarget`.
+
 You can set options for your project’s documentation in a configuration file,
 `.jazzy.yaml` by default. For a detailed explanation and an exhaustive list of
 all available options, run `jazzy --help config`.
@@ -69,6 +73,25 @@ backticks generates a link, for example:
   method or property in the same class.
 * \`[MyClass method1]\` - a link to an Objective-C method.
 * \`-[MyClass method2:param1]\` - a link to another Objective-C method.
+
+### Math
+
+Jazzy can render math equations written in LaTeX embedded in your markdown:
+* `` `$equation$` `` renders the equation in an inline style.
+* `` `$$equation$$` `` renders the equation in a display style, centered on a
+  line of its own.
+
+For example, the markdown:
+```markdown
+Inline: `$ax^2+bx+c=0$`
+
+Block: `$$x={\frac {-b\pm {\sqrt {b^{2}-4ac}}}{2a}}$$`
+```
+..renders as:
+
+![math](images/math.png)
+
+Math support is provided by [KaTeX](https://katex.org).
 
 ### Swift
 
