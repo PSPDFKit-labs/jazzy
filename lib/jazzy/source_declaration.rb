@@ -1,6 +1,7 @@
 require 'jazzy/source_declaration/access_control_level'
 require 'jazzy/source_declaration/type'
 
+# rubocop:disable Metrics/ClassLength
 module Jazzy
   class SourceDeclaration
     # kind of declaration (e.g. class, variable, function)
@@ -8,12 +9,23 @@ module Jazzy
     # static type of declared element (e.g. String.Type -> ())
     attr_accessor :typename
 
-    def type?(type_kind)
-      respond_to?(:type) && type.kind == type_kind
+    # Give the item its own page or just inline into parent?
+    def render_as_page?
+      children.any?
     end
 
-    def render?
-      type?('document.markdown') || children.count != 0
+    def swift?
+      type.swift_type?
+    end
+
+    def highlight_language
+      swift? ? Highlighter::SWIFT : Highlighter::OBJC
+    end
+
+    # When referencing this item from its parent category,
+    # include the content or just link to it directly?
+    def omit_content_from_parent?
+      false
     end
 
     # Element containing this declaration in the code
@@ -64,17 +76,32 @@ module Jazzy
       name.split(/[\(\)]/) if type.objc_category?
     end
 
+    def swift_objc_extension?
+      type.swift_extension? && usr && usr.start_with?('c:objc')
+    end
+
+    def swift_extension_objc_name
+      return unless type.swift_extension? && usr
+
+      usr.split('(cs)').last
+    end
+
+    # The language in the templates for display
+    def display_language
+      return 'Swift' if swift?
+
+      Config.instance.hide_objc? ? 'Swift' : 'Objective-C'
+    end
+
     def display_declaration
-      if Config.instance.hide_declarations == 'objc'
-        other_language_declaration
-      else
-        declaration
-      end
+      return declaration if swift?
+
+      Config.instance.hide_objc? ? other_language_declaration : declaration
     end
 
     def display_other_language_declaration
       other_language_declaration unless
-        %w[swift objc].include? Config.instance.hide_declarations
+        Config.instance.hide_objc? || Config.instance.hide_swift?
     end
 
     attr_accessor :file
@@ -103,7 +130,47 @@ module Jazzy
     attr_accessor :deprecation_message
     attr_accessor :unavailable
     attr_accessor :unavailable_message
-    
+    attr_accessor :generic_requirements
+    attr_accessor :inherited_types
+
+    def usage_discouraged?
+      unavailable || deprecated
+    end
+
+    def filepath
+      CGI.unescape(url)
+    end
+
+    def constrained_extension?
+      type.swift_extension? &&
+        generic_requirements
+    end
+
+    def mark_for_children
+      if constrained_extension?
+        SourceMark.new_generic_requirements(generic_requirements)
+      else
+        SourceMark.new
+      end
+    end
+
+    def inherited_types?
+      inherited_types &&
+        !inherited_types.empty?
+    end
+
+    # Is there at least one inherited type that is not in the given list?
+    def other_inherited_types?(unwanted)
+      return false unless inherited_types?
+      inherited_types.any? { |t| !unwanted.include?(t) }
+    end
+
+    # SourceKit only sets modulename for imported modules
+    def type_from_doc_module?
+      !type.extension? ||
+        (swift? && usr && modulename.nil?)
+    end
+
     def alternative_abstract
       if file = alternative_abstract_file
         Pathname(file).read

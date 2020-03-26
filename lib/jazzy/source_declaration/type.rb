@@ -77,6 +77,10 @@ module Jazzy
         kind == 'sourcekitten.source.lang.objc.decl.class'
       end
 
+      def swift_type?
+        kind.include? 'swift'
+      end
+
       def swift_enum_case?
         kind == 'source.lang.swift.decl.enumcase'
       end
@@ -110,6 +114,10 @@ module Jazzy
         kind == 'source.lang.swift.decl.protocol'
       end
 
+      def swift_typealias?
+        kind == 'source.lang.swift.decl.typealias'
+      end
+
       def param?
         # SourceKit strangely categorizes initializer parameters as local
         # variables, so both kinds represent a parameter in jazzy.
@@ -121,12 +129,26 @@ module Jazzy
         kind == 'source.lang.swift.decl.generic_type_param'
       end
 
+      def swift_variable?
+        kind.start_with?('source.lang.swift.decl.var')
+      end
+
       def objc_unexposed?
         kind == 'sourcekitten.source.lang.objc.decl.unexposed'
       end
 
       def self.overview
         Type.new('Overview')
+      end
+
+      MARKDOWN_KIND = 'document.markdown'.freeze
+
+      def self.markdown
+        Type.new(MARKDOWN_KIND)
+      end
+
+      def markdown?
+        kind == MARKDOWN_KIND
       end
 
       def hash
@@ -140,7 +162,7 @@ module Jazzy
 
       TYPES = {
         # Markdown
-        'document.markdown' => {
+        MARKDOWN_KIND => {
           jazzy: 'Guide',
           dash: 'Guide',
         }.freeze,

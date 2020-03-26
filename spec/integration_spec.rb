@@ -52,13 +52,9 @@ require 'cocoapods'
 
 def configure_cocoapods
   Pod::Config.instance.with_changes(silent: true) do
-    config = Pod::Config.instance
-    # working around a bug where `pod setup --silent` isn't silent
-    if config.sources_manager.master_repo_functional?
-      Pod::Command::Repo::Update.invoke(%w[master])
-    else
-      Pod::Command::Setup.invoke
-    end
+    Pod::Command::Setup.invoke
+    Pod::Command::Repo::AddCDN.invoke(%w[trunk https://cdn.cocoapods.org/])
+    Pod::Command::Repo::Update.invoke(%w[trunk])
   end
 end
 
@@ -77,8 +73,11 @@ CLIntegracon.configure do |c|
     File.write(
       path,
       File.read(path).gsub(
-        (ROOT + 'tmp').to_s,
+        c.temp_path.to_s,
         '<TMP>',
+      ).gsub(
+        c.spec_path.to_s,
+        '<SPEC>',
       ),
     )
   end
@@ -103,6 +102,7 @@ describe_cli 'jazzy' do
       'JAZZY_FAKE_VERSION'         => 'X.X.X',
       'COCOAPODS_SKIP_UPDATE_MESSAGE' => 'TRUE',
       'JAZZY_INTEGRATION_SPECS' => 'TRUE',
+      'JAZZY_FAKE_MODULE_VERSION' => 'Y.Y.Y',
     }
     s.default_args = []
     s.replace_path ROOT.to_s, 'ROOT'
@@ -163,9 +163,23 @@ describe_cli 'jazzy' do
                             "--head #{realm_head.shellescape}"
     end
 
-    describe 'Creates docs for ObjC project with a variety of contents' do
+    describe 'Creates docs for ObjC-Swift project with a variety of contents' do
+      base = ROOT + 'spec/integration_specs/misc_jazzy_objc_features/before'
+      Dir.chdir(base) do
+        sourcekitten = ROOT + 'bin/sourcekitten'
+        sdk = `xcrun --show-sdk-path --sdk iphonesimulator`.chomp
+        objc_args = "#{base}/MiscJazzyObjCFeatures/MiscJazzyObjCFeatures.h " \
+                    '-- -x objective-c ' \
+                    "-isysroot #{sdk} " \
+                    "-I #{base} " \
+                    '-fmodules'
+        `#{sourcekitten} doc --objc #{objc_args} > objc.json`
+        `#{sourcekitten} doc > swift.json`
+      end
+
       behaves_like cli_spec 'misc_jazzy_objc_features',
-                            '--theme fullwidth'
+                            '--theme fullwidth '\
+                            '-s objc.json,swift.json'
     end
   end if !spec_subset || spec_subset == 'objc'
 
@@ -173,16 +187,9 @@ describe_cli 'jazzy' do
     describe 'Creates docs with a module name, author name, project URL, ' \
       'xcodebuild options, and github info' do
       behaves_like cli_spec 'document_alamofire',
-                            '-m Alamofire -a Alamofire ' \
-                            '-u https://nshipster.com/alamofire ' \
-                            '-x -project,Alamofire.xcodeproj,-dry-run ' \
-                            '-g https://github.com/Alamofire/Alamofire ' \
-                            '--github-file-prefix https://github.com/' \
-                            'Alamofire/Alamofire/blob/4.3.0 ' \
-                            '--module-version 4.3.0 ' \
-                            '--root-url ' \
-                            'https://static.realm.io/jazzy_demo/Alamofire/ ' \
-                            '--skip-undocumented'
+                            '--skip-undocumented',
+                            # Ignore existing docs output
+                            '--clean'
     end
 
     describe 'Creates Realm Swift docs' do
@@ -202,7 +209,7 @@ describe_cli 'jazzy' do
                             '--root-url https://realm.io/docs/swift/' \
                             "#{realm_version}/api/ " \
                             '--xcodebuild-arguments ' \
-                            '-scheme,RealmSwift ' \
+                            '-scheme,RealmSwift,SWIFT_VERSION=4.2 ' \
                             "--head #{realm_head.shellescape}"
     end
 
@@ -216,7 +223,8 @@ describe_cli 'jazzy' do
     end
 
     describe 'Creates docs for Swift project with a variety of contents' do
-      behaves_like cli_spec 'misc_jazzy_features'
+      behaves_like cli_spec 'misc_jazzy_features',
+                            '-b -Xswiftc,-swift-version,-Xswiftc,4.2'
     end
   end if !spec_subset || spec_subset == 'swift'
 

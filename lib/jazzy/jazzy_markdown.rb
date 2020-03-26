@@ -4,6 +4,9 @@ require 'rouge/plugins/redcarpet'
 
 module Jazzy
   module Markdown
+    # Publish if generated HTML needs math support
+    class << self; attr_accessor :has_math; end
+
     class JazzyHTML < Redcarpet::Render::HTML
       include Redcarpet::Render::SmartyPants
       include Rouge::Plugins::Redcarpet
@@ -11,7 +14,7 @@ module Jazzy
       attr_accessor :default_language
 
       def header(text, header_level)
-        text_slug = text.gsub(/[^\w]+/, '-')
+        text_slug = text.gsub(/[^[[:word:]]]+/, '-')
                         .downcase
                         .sub(/^-/, '')
                         .sub(/-$/, '')
@@ -19,6 +22,20 @@ module Jazzy
         "<h#{header_level} id='#{text_slug}' class='heading'>" \
           "#{text}" \
         "</h#{header_level}>\n"
+      end
+
+      def codespan(text)
+        if /^\$\$(.*)\$\$$/m =~ text
+          o = ["<div class='math m-block'>", Regexp.last_match[1], '</div>']
+          Markdown.has_math = true
+        elsif /^\$(.*)\$$/m =~ text
+          o = ["<span class='math m-inline'>", Regexp.last_match[1], '</span>']
+          Markdown.has_math = true
+        else
+          o = ['<code>', text, '</code>']
+        end
+
+        o[0] + CGI.escapeHTML(o[1]) + o[2]
       end
 
       # List from
@@ -82,21 +99,21 @@ module Jazzy
 
       def render_aside(type, text)
         <<-HTML
-<div class="aside aside-#{type.underscore.tr('_', '-')}">
+</ul><div class="aside aside-#{type.underscore.tr('_', '-')}">
     <p class="aside-title">#{type.underscore.humanize}</p>
     #{text}
-</div>
+</div><ul>
         HTML
       end
 
       def list(text, list_type)
         elided = text.gsub!(ELIDED_LI_TOKEN, '')
         return if text =~ /\A\s*\Z/ && elided
-        return text if text =~ /class="aside-title"/
         str = "\n"
         str << (list_type == :ordered ? "<ol>\n" : "<ul>\n")
         str << text
         str << (list_type == :ordered ? "</ol>\n" : "</ul>\n")
+        str.gsub(%r{\n?<ul>\n<\/ul>}, '')
       end
 
       def block_code(code, language)
@@ -112,7 +129,6 @@ module Jazzy
       autolink: true,
       fenced_code_blocks: true,
       no_intra_emphasis: true,
-      quote: true,
       strikethrough: true,
       space_after_headers: false,
       tables: true,
