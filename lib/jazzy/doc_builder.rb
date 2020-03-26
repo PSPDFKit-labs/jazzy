@@ -376,6 +376,13 @@ module Jazzy
     # rubocop:disable Metrics/MethodLength
     def self.render_item(item, source_module)
       # Combine abstract and discussion into abstract
+      is_refined_for_swift = false
+      if item.swift_name.nil? == false
+        is_refined_for_swift = item.swift_name.start_with?('__')
+      end
+
+      other_language_declaration = item.display_other_language_declaration unless is_refined_for_swift
+
       abstract = (item.abstract || '') + (item.discussion || '')
       {
         name:                       item.name,
@@ -383,7 +390,7 @@ module Jazzy
         abstract:                   abstract,
         declaration:                item.display_declaration,
         language:                   item.display_language,
-        other_language_declaration: item.display_other_language_declaration,
+        other_language_declaration: other_language_declaration,
         usr:                        item.usr,
         dash_type:                  item.type.dash_type,
         github_token_url:           gh_token_url(item, source_module),
