@@ -3,7 +3,7 @@ require 'sqlite3'
 
 module Jazzy
   module DocBuilder
-    # Follows the instructions found at http://kapeli.com/docsets#dashDocset.
+    # Follows the instructions found at https://kapeli.com/docsets#dashDocset.
     class DocsetBuilder
       include Config::Mixin
 
@@ -43,6 +43,8 @@ module Jazzy
             template.read,
             lowercase_name: source_module.name.downcase,
             name: source_module.name,
+            root_url: config.root_url,
+            playground_url: config.docset_playground_url,
           )
         end
       end
@@ -78,7 +80,7 @@ module Jazzy
             'searchIndex (name, type, path);')
           source_module.all_declarations.select(&:type).each do |doc|
             db.execute('INSERT OR IGNORE INTO searchIndex(name, type, path) ' \
-              'VALUES (?, ?, ?);', [doc.name, doc.type.dash_type, doc.url])
+              'VALUES (?, ?, ?);', [doc.name, doc.type.dash_type, doc.filepath])
           end
         end
       end

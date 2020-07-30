@@ -2,7 +2,6 @@ require 'optparse'
 require 'pathname'
 require 'uri'
 
-require 'jazzy/doc'
 require 'jazzy/podspec_documenter'
 require 'jazzy/source_declaration/access_control_level'
 
@@ -60,7 +59,7 @@ module Jazzy
 
       def full_command_line_name
         long_option_names = command_line.map do |opt|
-          Regexp.last_match(1) if opt =~ %r{
+          Regexp.last_match(1) if opt.to_s =~ %r{
             ^--           # starts with double dash
             (?:\[no-\])?  # optional prefix for booleans
             ([^\s]+)      # long option name
@@ -80,19 +79,40 @@ module Jazzy
       @all_config_attrs << Attribute.new(name, **opts)
     end
 
+    def self.alias_config_attr(name, forward, **opts)
+      alias_method name.to_s, forward.to_s
+      alias_method "#{name}=", "#{forward}="
+      alias_method "#{name}_configured", "#{forward}_configured"
+      alias_method "#{name}_configured=", "#{forward}_configured="
+      @all_config_attrs << Attribute.new(name, **opts)
+    end
+
     class << self
       attr_reader :all_config_attrs
     end
 
     attr_accessor :base_path
 
-    def expand_path(path)
+    def expand_glob_path(path)
       Pathname(path).expand_path(base_path) # nil means Pathname.pwd
+    end
+
+    def expand_path(path)
+      abs_path = expand_glob_path(path)
+      Pathname(Dir[abs_path][0] || abs_path) # Use existing filesystem spelling
+    end
+
+    def hide_swift?
+      hide_declarations == 'swift'
+    end
+
+    def hide_objc?
+      hide_declarations == 'objc'
     end
 
     # ──────── Build ────────
 
-    # rubocop:disable Style/AlignParameters
+    # rubocop:disable Layout/AlignParameters
 
     config_attr :output,
       description: 'Folder to output the HTML docs to',
@@ -127,21 +147,41 @@ module Jazzy
       description: 'The SDK for which your code should be built.',
       default: 'macosx'
 
+    config_attr :hide_declarations,
+      command_line: '--hide-declarations [objc|swift] ',
+      description: 'Hide declarations in the specified language. Given that ' \
+                   'generating Swift docs only generates Swift declarations, ' \
+                   'this is useful for hiding a specific interface for ' \
+                   'either Objective-C or mixed Objective-C and Swift ' \
+                   'projects.',
+      default: ''
+
+    config_attr :keep_property_attributes,
+      command_line: '--[no-]keep-property-attributes',
+      description: 'Include the default Objective-C property attributes.',
+      default: false
+
     config_attr :config_file,
       command_line: '--config PATH',
       description: ['Configuration file (.yaml or .json)',
                     'Default: .jazzy.yaml in source directory or ancestor'],
       parse: ->(cf) { expand_path(cf) }
 
-    config_attr :xcodebuild_arguments,
-      command_line: ['-x', '--xcodebuild-arguments arg1,arg2,…argN', Array],
-      description: 'Arguments to forward to xcodebuild',
+    config_attr :build_tool_arguments,
+      command_line: ['-b', '--build-tool-arguments arg1,arg2,…argN', Array],
+      description: 'Arguments to forward to xcodebuild, swift build, or ' \
+                   'sourcekitten.',
       default: []
 
+    alias_config_attr :xcodebuild_arguments, :build_tool_arguments,
+      command_line: ['-x', '--xcodebuild-arguments arg1,arg2,…argN', Array],
+      description: 'Back-compatibility alias for build_tool_arguments.'
+
     config_attr :sourcekitten_sourcefile,
-      command_line: ['-s', '--sourcekitten-sourcefile FILEPATH'],
-      description: 'File generated from sourcekitten output to parse',
-      parse: ->(s) { expand_path(s) }
+      command_line: ['-s', '--sourcekitten-sourcefile filepath1,…filepathN',
+                     Array],
+      description: 'File(s) generated from sourcekitten output to parse',
+      parse: ->(paths) { [paths].flatten.map { |path| expand_path(path) } }
 
     config_attr :source_directory,
       command_line: '--source-directory DIRPATH',
@@ -150,20 +190,47 @@ module Jazzy
       parse: ->(sd) { expand_path(sd) }
 
     config_attr :excluded_files,
-      command_line: ['-e', '--exclude file1,file2,directory3,…fileN', Array],
-      description: 'Files/directories to be excluded from documentation. '\
+      command_line: ['-e', '--exclude filepath1,filepath2,…filepathN', Array],
+      description: 'Source file pathnames to be excluded from documentation. '\
                    'Supports wildcards.',
       default: [],
       parse: ->(files) do
-        Array(files).map { |f| expand_path(f).to_s }
+        Array(files).map { |f| expand_glob_path(f).to_s }
+      end
+
+    config_attr :included_files,
+      command_line: ['-i', '--include filepath1,filepath2,…filepathN', Array],
+      description: 'Source file pathnames to be included in documentation. '\
+                   'Supports wildcards.',
+      default: [],
+      parse: ->(files) do
+        Array(files).map { |f| expand_glob_path(f).to_s }
       end
 
     config_attr :swift_version,
       command_line: '--swift-version VERSION',
       default: nil,
       parse: ->(v) do
-        raise 'jazzy only supports Swift 2.0 or later.' if v.to_f < 2
-        v
+        if v.to_s.empty?
+          nil
+        else
+          raise 'jazzy only supports Swift 2.0 or later.' if v.to_f < 2
+          v
+        end
+      end
+
+    SWIFT_BUILD_TOOLS = %w[spm xcodebuild].freeze
+
+    config_attr :swift_build_tool,
+      command_line: "--swift-build-tool #{SWIFT_BUILD_TOOLS.join(' | ')}",
+      description: 'Control whether Jazzy uses Swift Package Manager or '\
+                   'xcodebuild to build the module to be documented.  By '\
+                   'default it uses xcodebuild if there is a .xcodeproj '\
+                   'file in the source directory.',
+      parse: ->(tool) do
+        return tool.to_sym if SWIFT_BUILD_TOOLS.include?(tool)
+        raise "Unsupported swift_build_tool #{tool}, "\
+              "supported values: #{SWIFT_BUILD_TOOLS.join(', ')}"
       end
 
     # ──────── Metadata ────────
@@ -175,7 +242,7 @@ module Jazzy
 
     config_attr :author_url,
       command_line: ['-u', '--author_url URL'],
-      description: 'Author URL of this project (e.g. http://realm.io)',
+      description: 'Author URL of this project (e.g. https://realm.io)',
       default: '',
       parse: ->(u) { URI(u) }
 
@@ -186,8 +253,15 @@ module Jazzy
 
     config_attr :version,
       command_line: '--module-version VERSION',
-      description: 'module version. will be used when generating docset',
+      description: 'Version string to use as part of the the default docs '\
+                   'title and inside the docset.',
       default: '1.0'
+
+    config_attr :title,
+      command_line: '--title TITLE',
+      description: 'Title to display at the top of each page, overriding the '\
+                   'default generated from module name and version.',
+      default: ''
 
     config_attr :copyright,
       command_line: '--copyright COPYRIGHT_MARKDOWN',
@@ -210,8 +284,18 @@ module Jazzy
 
     config_attr :podspec,
       command_line: '--podspec FILEPATH',
+      description: 'A CocoaPods Podspec that describes the Swift library to '\
+                   'document',
       parse: ->(ps) { PodspecDocumenter.create_podspec(Pathname(ps)) if ps },
       default: Dir['*.podspec{,.json}'].first
+
+    config_attr :pod_sources,
+      command_line: ['--pod-sources url1,url2,…urlN', Array],
+      description: 'A list of sources to find pod dependencies. Used only '\
+                   'with --podspec when the podspec contains references to '\
+                   'privately hosted pods. You must include the default pod '\
+                   'source if public pods are also used.',
+      default: []
 
     config_attr :docset_icon,
       command_line: '--docset-icon FILEPATH',
@@ -226,12 +310,13 @@ module Jazzy
     config_attr :root_url,
       command_line: ['-r', '--root-url URL'],
       description: 'Absolute URL root where these docs will be stored',
-      parse: ->(r) { URI(r) }
+      # ensure trailing slash for correct URI.join()
+      parse: ->(r) { URI(r.sub(%r{/?$}, '/')) }
 
     config_attr :dash_url,
       command_line: ['-d', '--dash_url URL'],
       description: 'Location of the dash XML feed '\
-                    'e.g. http://realm.io/docsets/realm.xml)',
+                    'e.g. https://realm.io/docsets/realm.xml)',
       parse: ->(d) { URI(d) }
 
     config_attr :github_url,
@@ -244,6 +329,11 @@ module Jazzy
       command_line: '--github-file-prefix PREFIX',
       description: 'GitHub URL file prefix of this project (e.g. '\
                    'https://github.com/realm/realm-cocoa/tree/v0.87.1)'
+
+    config_attr :docset_playground_url,
+      command_line: '--docset-playground-url URL',
+      description: 'URL of an interactive playground to demonstrate the '\
+                   'framework, linked to from the docset.'
 
     # ──────── Doc generation options ────────
     config_attr :disable_search,
@@ -258,7 +348,8 @@ module Jazzy
       default: false
 
     config_attr :min_acl,
-      command_line: '--min-acl [private | internal | public]',
+      command_line:
+         '--min-acl [private | fileprivate | internal | public | open]',
       description: 'minimum access control level to document',
       default: 'public',
       parse: ->(acl) do
@@ -280,23 +371,42 @@ module Jazzy
       description: ['Custom navigation categories to replace the standard '\
                     '“Classes, Protocols, etc.”', 'Types not explicitly named '\
                     'in a custom category appear in generic groups at the end.',
-                    'Example: http://git.io/v4Bcp'],
+                    'Example: https://git.io/v4Bcp'],
       default: []
+
+    config_attr :custom_categories_unlisted_prefix,
+      description: "Prefix for navigation section names that aren't "\
+                   'explicitly listed in `custom_categories`.',
+      default: 'Other '
+
+    config_attr :hide_unlisted_documentation,
+      command_line: '--[no-]hide-unlisted-documentation',
+      description: "Don't include documentation in the sidebar from the "\
+                   "`documentation` config value that aren't explicitly "\
+                   'listed in `custom_categories`.',
+      default: false
 
     config_attr :custom_head,
       command_line: '--head HTML',
       description: 'Custom HTML to inject into <head></head>.',
       default: ''
 
+    BUILTIN_THEME_DIR = Pathname(__FILE__).parent + 'themes'
+    BUILTIN_THEMES = BUILTIN_THEME_DIR.children(false).map(&:to_s)
+
     config_attr :theme_directory,
-      command_line: '--theme [apple | fullwidth | DIRPATH]',
+      command_line: "--theme [#{BUILTIN_THEMES.join(' | ')} | DIRPATH]",
       description: "Which theme to use. Specify either 'apple' (default), "\
-                   "'fullwidth' or the path to your mustache templates and " \
-                   'other assets for a custom theme.',
+                   'one of the other built-in theme names, or the path to '\
+                   'your mustache templates and other assets for a custom '\
+                   'theme.',
       default: 'apple',
       parse: ->(t) do
-        return expand_path(t) unless t == 'apple' || t == 'fullwidth'
-        Pathname(__FILE__).parent + 'themes' + t
+        if BUILTIN_THEMES.include?(t)
+          BUILTIN_THEME_DIR + t
+        else
+          expand_path(t)
+        end
       end
 
     config_attr :use_safe_filenames,
@@ -321,7 +431,20 @@ module Jazzy
         raise '--assets-directory is deprecated: use --theme instead.'
       end
 
-    # rubocop:enable Style/AlignParameters
+    config_attr :undocumented_text,
+      command_line: '--undocumented-text UNDOCUMENTED_TEXT',
+      description: 'Default text for undocumented symbols. The default '\
+                   'is "Undocumented", put "" if no text is required',
+      default: 'Undocumented'
+
+    config_attr :separate_global_declarations,
+      command_line: '--[no-]separate-global-declarations',
+      description: 'Create separate pages for all global declarations '\
+                   "(classes, structures, enums etc.) even if they don't "\
+                   'have children.',
+      default: false
+
+    # rubocop:enable Style/AlignParameter
 
     def initialize
       self.class.all_config_attrs.each do |attr|
@@ -392,7 +515,7 @@ module Jazzy
       puts "Using config file #{config_path}"
       config_file = read_config_file(config_path)
 
-      attrs_by_conf_key, attrs_by_name = %i(config_file_key name).map do |prop|
+      attrs_by_conf_key, attrs_by_name = %i[config_file_key name].map do |prop|
         self.class.all_config_attrs.group_by(&prop)
       end
 
@@ -428,7 +551,14 @@ module Jazzy
     def read_config_file(file)
       case File.extname(file)
         when '.json'         then JSON.parse(File.read(file))
-        when '.yaml', '.yml' then YAML.safe_load(File.read(file))
+        when '.yaml', '.yml' then
+          if YAML.respond_to?('safe_load') # ruby >= 2.1.0
+            YAML.safe_load(File.read(file))
+          else
+            # rubocop:disable Security/YAMLLoad
+            YAML.load(File.read(file))
+            # rubocop:enable Security/YAMLLoad
+          end
         else raise "Config file must be .yaml or .json, but got #{file.inspect}"
       end
     end

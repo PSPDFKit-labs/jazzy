@@ -2,6 +2,7 @@ require 'tmpdir'
 require 'json'
 
 module Jazzy
+  # rubocop:disable Metrics/ClassLength
   class PodspecDocumenter
     attr_reader :podspec
 
@@ -14,9 +15,10 @@ module Jazzy
     def sourcekitten_output(config)
       installation_root = Pathname(Dir.mktmpdir(['jazzy', podspec.name]))
       installation_root.rmtree if installation_root.exist?
-      Pod::Config.instance.with_changes(installation_root: installation_root) do
+      Pod::Config.instance.with_changes(installation_root: installation_root,
+                                        verbose: false) do
         sandbox = Pod::Sandbox.new(Pod::Config.instance.sandbox_root)
-        installer = Pod::Installer.new(sandbox, podfile)
+        installer = Pod::Installer.new(sandbox, podfile(config))
         installer.install!
         stdout = Dir.chdir(sandbox.root) do
           targets = installer.pod_targets
@@ -24,9 +26,7 @@ module Jazzy
                              .map(&:label)
 
           targets.map do |t|
-            args = %W(doc --module-name #{podspec.module_name} -- -target #{t})
-            swift_version = (config.swift_version || '3')[0] + '.0'
-            args << "SWIFT_VERSION=\"#{swift_version}\""
+            args = %W[doc --module-name #{podspec.module_name} -- -target #{t}]
             SourceKitten.run_sourcekitten(args)
           end
         end
@@ -44,31 +44,39 @@ module Jazzy
 
     # rubocop:disable Metrics/CyclomaticComplexity
     # rubocop:disable Metrics/PerceivedComplexity
+    # rubocop:disable Metrics/MethodLength
     def self.apply_config_defaults(podspec, config)
       return unless podspec
 
       unless config.author_name_configured
         config.author_name = author_name(podspec)
+        config.author_name_configured = true
       end
       unless config.module_name_configured
         config.module_name = podspec.module_name
+        config.module_name_configured = true
       end
       unless config.author_url_configured
         config.author_url = podspec.homepage || github_file_prefix(podspec)
+        config.author_url_configured = true
       end
       unless config.version_configured
         config.version = podspec.version.to_s
+        config.version_configured = true
       end
       unless config.github_file_prefix_configured
         config.github_file_prefix = github_file_prefix(podspec)
+        config.github_file_prefix_configured = true
       end
       unless config.swift_version_configured
         trunk_swift_build = podspec.attributes_hash['pushed_with_swift_version']
         config.swift_version = trunk_swift_build if trunk_swift_build
+        config.swift_version_configured = true
       end
     end
     # rubocop:enable Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/PerceivedComplexity
+    # rubocop:enable Metrics/MethodLength
 
     private
 
@@ -95,6 +103,34 @@ module Jazzy
 
     private_class_method :github_file_prefix
 
+    # Latest valid value for SWIFT_VERSION.
+    LATEST_SWIFT_VERSION = '5'.freeze
+
+    # All valid values for SWIFT_VERSION that are longer
+    # than a major version number.  Ordered ascending.
+    LONG_SWIFT_VERSIONS = ['4.2'].freeze
+
+    # Go from a full Swift version like 4.2.1 to
+    # something valid for SWIFT_VERSION.
+    def compiler_swift_version(user_version)
+      unless user_version
+        return podspec_swift_version || LATEST_SWIFT_VERSION
+      end
+
+      LONG_SWIFT_VERSIONS.select do |version|
+        user_version.start_with?(version)
+      end.last || "#{user_version[0]}.0"
+    end
+
+    def podspec_swift_version
+      # `swift_versions` exists from CocoaPods 1.7
+      if podspec.respond_to?('swift_versions')
+        podspec.swift_versions.max
+      else
+        podspec.swift_version
+      end
+    end
+
     # @!group SourceKitten output helper methods
 
     def pod_path
@@ -105,28 +141,40 @@ module Jazzy
       end
     end
 
-    def podfile
+    # rubocop:disable Metrics/MethodLength
+    def podfile(config)
+      swift_version = compiler_swift_version(config.swift_version)
       podspec = @podspec
       path = pod_path
       @podfile ||= Pod::Podfile.new do
+        config.pod_sources.each do |src|
+          source src
+        end
+
         install! 'cocoapods',
                  integrate_targets: false,
                  deterministic_uuids: false
 
         [podspec, *podspec.recursive_subspecs].each do |ss|
+          next if ss.test_specification
+
           ss.available_platforms.each do |p|
             # Travis builds take too long when building docs for all available
             # platforms for the Moya integration spec, so we just document OSX.
             # TODO: remove once jazzy is fast enough.
-            next if ENV['JAZZY_INTEGRATION_SPECS'] && p.name != :osx
+            if ENV['JAZZY_INTEGRATION_SPECS']
+              next if p.name != :osx
+            end
             target("Jazzy-#{ss.name.gsub('/', '__')}-#{p.name}") do
               use_frameworks!
               platform p.name, p.deployment_target
               pod ss.name, path: path.realpath.to_s
+              current_target_definition.swift_version = swift_version
             end
           end
         end
       end
     end
+    # rubocop:enable Metrics/MethodLength
   end
 end

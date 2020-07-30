@@ -29,7 +29,8 @@ module Jazzy
       self.author_url = options.author_url
       self.root_url = options.root_url
       return unless options.dash_url
-      self.dash_url = "dash-feed://#{URI.encode(options.dash_url.to_s, /\W/)}"
+      self.dash_url =
+        "dash-feed://#{ERB::Util.url_encode(options.dash_url.to_s)}"
     end
 
     def all_declarations
@@ -39,7 +40,7 @@ module Jazzy
         d.map(&:children).each { |c| visitor[c] }
       end
       visitor[docs]
-      all_declarations.select { |doc| doc.name != 'index' }
+      all_declarations.reject { |doc| doc.name == 'index' }
     end
   end
 end

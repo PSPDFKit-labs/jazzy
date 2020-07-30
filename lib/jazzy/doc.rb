@@ -8,10 +8,11 @@ require 'jazzy/jazzy_markdown'
 
 module Jazzy
   class Doc < Mustache
+    include Config::Mixin
+
     self.template_name = 'doc'
 
     def copyright
-      config = Config.instance
       copyright = config.copyright || (
         # Fake date is used to keep integration tests consistent
         date = ENV['JAZZY_FAKE_DATE'] || DateTime.now.strftime('%Y-%m-%d')
@@ -19,7 +20,7 @@ module Jazzy
         "&copy; #{year} [#{config.author_name}](#{config.author_url}). " \
         "All rights reserved. (Last updated: #{date})"
       )
-      Jazzy.copyright_markdown.render(copyright).chomp
+      Markdown.render_copyright(copyright).chomp
     end
 
     def jazzy_version
@@ -27,12 +28,32 @@ module Jazzy
       ENV['JAZZY_FAKE_VERSION'] || Jazzy::VERSION
     end
 
-    def language
-      Config.instance.objc_mode ? 'Objective-C' : 'Swift'
+    def objc_first?
+      config.objc_mode && config.hide_declarations != 'objc'
     end
 
     def language_stub
-      Config.instance.objc_mode ? 'objc' : 'swift'
+      objc_first? ? 'objc' : 'swift'
+    end
+
+    def module_version
+      config.version_configured ? config.version : nil
+    end
+
+    def docs_title
+      if config.title_configured
+        config.title
+      elsif config.version_configured
+        # Fake version for integration tests
+        version = ENV['JAZZY_FAKE_MODULE_VERSION'] || config.version
+        "#{config.module_name} #{version} Docs"
+      else
+        "#{config.module_name} Docs"
+      end
+    end
+
+    def enable_katex
+      Markdown.has_math
     end
   end
 end

@@ -27,13 +27,34 @@ begin
 
   desc 'Run specs'
   task :spec do
-    title 'Running Unit Tests'
+    title 'Running Tests'
+    Rake::Task['unit_spec'].invoke
+    Rake::Task['objc_spec'].invoke
+    Rake::Task['swift_spec'].invoke
+    Rake::Task['cocoapods_spec'].invoke
+    Rake::Task['rubocop'].invoke
+  end
+
+  desc 'Run unit specs'
+  task :unit_spec do
     files = FileList['spec/*_spec.rb']
       .exclude('spec/integration_spec.rb').shuffle.join(' ')
     sh "bundle exec bacon #{files}"
-    sh 'bundle exec bacon spec/integration_spec.rb'
+  end
 
-    Rake::Task['rubocop'].invoke
+  desc 'Run objc integration specs'
+  task :objc_spec do
+    sh 'JAZZY_SPEC_SUBSET=objc bundle exec bacon spec/integration_spec.rb'
+  end
+
+  desc 'Run swift integration specs'
+  task :swift_spec do
+    sh 'JAZZY_SPEC_SUBSET=swift bundle exec bacon spec/integration_spec.rb'
+  end
+
+  desc 'Run cocoapods integration specs'
+  task :cocoapods_spec do
+    sh 'JAZZY_SPEC_SUBSET=cocoapods bundle exec bacon spec/integration_spec.rb'
   end
 
   desc 'Rebuilds integration fixtures'
@@ -54,13 +75,14 @@ begin
 
     # Remove files not used for the comparison
     # To keep the git diff clean
-    files_glob = 'spec/integration_specs/*/after/{*,.*}'
+    specs_root = 'spec/integration_specs/*/after'
+    files_glob = "#{specs_root}/{*,.*}"
     files_to_delete = FileList[files_glob]
       .exclude('**/.', '**/..')
-      .exclude('spec/integration_specs/*/after/*docs',
-               'spec/integration_specs/*/after/execution_output.txt')
-      .include('**/*.dsidx')
-      .include('**/*.tgz')
+      .exclude("#{specs_root}/*docs",
+               "#{specs_root}/execution_output.txt")
+      .include("#{specs_root}/**/*.dsidx")
+      .include("#{specs_root}/**/*.tgz")
     files_to_delete.each do |file_to_delete|
       sh "rm -rf '#{file_to_delete}'"
     end
@@ -71,24 +93,50 @@ begin
 
   #-- RuboCop ----------------------------------------------------------------#
 
-  require 'rubocop/rake_task'
-  RuboCop::RakeTask.new(:rubocop)
+  desc 'Runs RuboCop linter on Ruby files'
+  task :rubocop do
+    sh 'bundle exec rubocop lib spec'
+  end
 
   #-- SourceKitten -----------------------------------------------------------#
 
   desc 'Vendors SourceKitten'
   task :sourcekitten do
-    Dir.chdir('SourceKitten') do
-      `make installables`
+    sk_dir = 'SourceKitten'
+    Dir.chdir(sk_dir) do
+      `swift build -c release`
     end
+    FileUtils.cp_r "#{sk_dir}/.build/release/sourcekitten", 'bin'
+  end
 
-    destination = 'lib/jazzy/sourcekitten'
-    rakefile = File.read("#{destination}/Rakefile")
-    source = '/tmp/SourceKitten.dst/usr/local/.'
-    FileUtils.rm_rf destination
-    FileUtils.mkdir_p destination
-    FileUtils.cp_r source, destination
-    File.open("#{destination}/Rakefile", 'w') { |f| f.write rakefile }
+  #-- Theme Dependencies -----------------------------------------------------#
+
+  THEME_FILES = {
+    'jquery/dist/jquery.min.js' => [
+      'themes/apple/assets/js',
+      'themes/fullwidth/assets/js',
+      'themes/jony/assets/js'
+    ],
+    'lunr/lunr.min.js' => [
+      'themes/apple/assets/js',
+      'themes/fullwidth/assets/js'
+    ],
+    'corejs-typeahead/dist/typeahead.jquery.js' => [
+      'themes/apple/assets/js',
+      'themes/fullwidth/assets/js'
+    ],
+    'katex/dist/katex.min.css' => ['extensions/katex/css'],
+    'katex/dist/fonts' => ['extensions/katex/css'],
+    'katex/dist/katex.min.js' => ['extensions/katex/js']
+  }
+
+  desc 'Copies theme dependencies (`npm update/install` by hand first)'
+  task :theme_deps do
+    THEME_FILES.each_pair do |src, dsts|
+      dsts.each do |dst|
+        FileUtils.cp_r "js/node_modules/#{src}", "lib/jazzy/#{dst}"
+      end
+    end
   end
 
 rescue LoadError, NameError => e

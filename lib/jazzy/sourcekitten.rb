@@ -2,19 +2,22 @@ require 'json'
 require 'pathname'
 require 'shellwords'
 require 'xcinvoke'
+require 'cgi'
+require 'rexml/document'
 
 require 'jazzy/config'
 require 'jazzy/executable'
 require 'jazzy/highlighter'
 require 'jazzy/source_declaration'
 require 'jazzy/source_mark'
+require 'jazzy/stats'
 
 ELIDED_AUTOLINK_TOKEN = '36f8f5912051ae747ef441d6511ca4cb'.freeze
 
 def autolink_regex(middle_regex, after_highlight)
   start_tag_re, end_tag_re =
     if after_highlight
-      [/<span class="(?:n|kt|nc)">/, '</span>']
+      [/<span class="(?:n|kt|kd|nc)">/, '</span>']
     else
       ['<code>', '</code>']
     end
@@ -26,7 +29,7 @@ class String
     gsub(autolink_regex(middle_regex, after_highlight)) do
       original = Regexp.last_match(0)
       start_tag, raw_name, end_tag = Regexp.last_match.captures
-      link_target = yield(raw_name)
+      link_target = yield(CGI.unescape_html(raw_name))
 
       if link_target &&
          !link_target.type.extension? &&
@@ -41,21 +44,29 @@ class String
       end
     end
   end
+
+  def unindent(count)
+    gsub(/^#{' ' * count}/, '')
+  end
 end
 
 module Jazzy
   # This module interacts with the sourcekitten command-line executable
   module SourceKitten
-    @documented_count = 0
-    @undocumented_decls = []
+    def self.undocumented_abstract
+      @undocumented_abstract ||= Markdown.render(
+        Config.instance.undocumented_text,
+      ).freeze
+    end
 
     # Group root-level docs by custom categories (if any) and type
     def self.group_docs(docs)
       custom_categories, docs = group_custom_categories(docs)
+      unlisted_prefix = Config.instance.custom_categories_unlisted_prefix
       type_categories, uncategorized = group_type_categories(
-        docs, custom_categories.any? ? 'Other ' : ''
+        docs, custom_categories.any? ? unlisted_prefix : ''
       )
-      custom_categories + type_categories + uncategorized
+      custom_categories + merge_categories(type_categories) + uncategorized
     end
 
     def self.group_custom_categories(docs)
@@ -82,25 +93,52 @@ module Jazzy
           children,
           type_category_prefix + type.plural_name,
           "The following #{type.plural_name.downcase} are available globally.",
+          type_category_prefix + type.plural_url_name,
         )
       end
       [group.compact, docs]
     end
 
-    def self.make_group(group, name, abstract)
+    # Join categories with the same name (eg. ObjC and Swift classes)
+    def self.merge_categories(categories)
+      merged = []
+      categories.each do |new_category|
+        if existing = merged.find { |c| c.name == new_category.name }
+          existing.children += new_category.children
+        else
+          merged.append(new_category)
+        end
+      end
+      merged
+    end
+
+    def self.make_group(group, name, abstract, url_name = nil)
       group.reject! { |doc| doc.name.empty? }
       unless group.empty?
         SourceDeclaration.new.tap do |sd|
           sd.type     = SourceDeclaration::Type.overview
           sd.name     = name
-          sd.abstract = abstract
+          sd.url_name = url_name
+          sd.abstract = Markdown.render(abstract)
           sd.children = group
         end
       end
     end
 
+    # Merge consecutive sections with the same mark into one section
+    def self.merge_consecutive_marks(docs)
+      prev_mark = nil
+      docs.each do |doc|
+        if prev_mark && prev_mark.can_merge?(doc.mark)
+          doc.mark = prev_mark
+        end
+        prev_mark = doc.mark
+        merge_consecutive_marks(doc.children)
+      end
+    end
+
     def self.sanitize_filename(doc)
-      unsafe_filename = doc.name
+      unsafe_filename = doc.docs_filename
       sanitzation_enabled = Config.instance.use_safe_filenames
       if sanitzation_enabled && !doc.type.name_controlled_manually?
         return CGI.escape(unsafe_filename).gsub('_', '%5F').tr('%', '_')
@@ -114,12 +152,11 @@ module Jazzy
     # @return [Hash] input docs with URLs
     def self.make_doc_urls(docs)
       docs.each do |doc|
-        if !doc.parent_in_docs || doc.children.count > 0
-          # Create HTML page for this doc if it has children or is root-level
+        if doc.render_as_page?
           doc.url = (
             subdir_for_doc(doc) +
             [sanitize_filename(doc) + '.html']
-          ).join('/')
+          ).map { |path| ERB::Util.url_encode(path) }.join('/')
           doc.children = make_doc_urls(doc.children)
         else
           # Don't create HTML page for this doc if it doesn't have children
@@ -128,8 +165,8 @@ module Jazzy
             warn 'A compile error prevented ' + doc.fully_qualified_name +
                  ' from receiving a unique USR. Documentation may be ' \
                  'incomplete. Please check for compile errors by running ' \
-                 '`xcodebuild ' \
-                 "#{Config.instance.xcodebuild_arguments.shelljoin}`."
+                 '`xcodebuild` or `swift build` with arguments ' \
+                 "`#{Config.instance.build_tool_arguments.shelljoin}`."
           end
           id = doc.usr
           unless id
@@ -147,36 +184,72 @@ module Jazzy
     end
     # rubocop:enable Metrics/MethodLength
 
-    # Determine the subdirectory in which a doc should be placed
+    # Determine the subdirectory in which a doc should be placed.
+    # Guides in the root for back-compatibility.
+    # Declarations under outer namespace type (Structures, Classes, etc.)
     def self.subdir_for_doc(doc)
-      # We always want to create top-level subdirs according to type (Struct,
-      # Class, etc).
+      return [] if doc.type.markdown?
       top_level_decl = doc.namespace_path.first
-      if top_level_decl && top_level_decl.type && top_level_decl.type.name
-        # File program elements under top ancestor’s type (Struct, Class, etc.)
-        [top_level_decl.type.plural_name] + doc.namespace_ancestors.map(&:name)
+      if top_level_decl.type.name
+        [top_level_decl.type.plural_url_name] +
+          doc.namespace_ancestors.map(&:name)
       else
-        # Categories live in their own directory
+        # Category - in the root
         []
       end
+    end
+
+    # returns all subdirectories of specified path
+    def self.rec_path(path)
+      path.children.collect do |child|
+        if child.directory?
+          rec_path(child) + [child]
+        end
+      end.select { |x| x }.flatten(1)
+    end
+
+    def self.use_spm?(options)
+      options.swift_build_tool == :spm ||
+        (!options.swift_build_tool_configured &&
+         Dir['*.xcodeproj', '*.xcworkspace'].empty? &&
+         !options.build_tool_arguments.include?('-project') &&
+         !options.build_tool_arguments.include?('-workspace'))
     end
 
     # Builds SourceKitten arguments based on Jazzy options
     def self.arguments_from_options(options)
       arguments = ['doc']
       if options.objc_mode
-        if options.xcodebuild_arguments.empty?
-          arguments += ['--objc', options.umbrella_header.to_s, '--', '-x',
-                        'objective-c', '-isysroot',
-                        `xcrun --show-sdk-path --sdk #{options.sdk}`.chomp,
-                        '-I', options.framework_root.to_s]
-        end
-      elsif !options.module_name.empty?
-        arguments += ['--module-name', options.module_name, '--']
+        arguments += objc_arguments_from_options(options)
       else
+        arguments += ['--spm'] if use_spm?(options)
+        unless options.module_name.empty?
+          arguments += ['--module-name', options.module_name]
+        end
         arguments += ['--']
       end
-      arguments + options.xcodebuild_arguments
+
+      arguments + options.build_tool_arguments
+    end
+
+    def self.objc_arguments_from_options(options)
+      arguments = []
+      if options.build_tool_arguments.empty?
+        arguments += ['--objc', options.umbrella_header.to_s, '--', '-x',
+                      'objective-c', '-isysroot',
+                      `xcrun --show-sdk-path --sdk #{options.sdk}`.chomp,
+                      '-I', options.framework_root.to_s,
+                      '-fmodules']
+      end
+      # add additional -I arguments for each subdirectory of framework_root
+      unless options.framework_root.nil?
+        rec_path(Pathname.new(options.framework_root.to_s)).collect do |child|
+          if child.directory?
+            arguments += ['-I', child.to_s]
+          end
+        end
+      end
+      arguments
     end
 
     # Run sourcekitten with given arguments and return STDOUT
@@ -189,7 +262,7 @@ module Jazzy
       else
         env = ENV
       end
-      bin_path = Pathname(__FILE__).parent + 'SourceKitten/bin/sourcekitten'
+      bin_path = Pathname(__FILE__) + '../../../bin/sourcekitten'
       output, = Executable.execute_command(bin_path, arguments, true, env: env)
       output
     end
@@ -198,14 +271,9 @@ module Jazzy
       # @todo: Fix these
       declaration.line = nil
       declaration.column = nil
-      declaration.abstract = 'Undocumented'
+      declaration.abstract = ''
       declaration.parameters = []
       declaration.children = []
-    end
-
-    def self.documented_child?(doc)
-      return false unless doc['key.substructure']
-      doc['key.substructure'].any? { |child| documented_child?(child) }
     end
 
     def self.availability_attribute?(doc)
@@ -220,8 +288,13 @@ module Jazzy
     def self.should_document?(doc)
       return false if doc['key.doc.comment'].to_s.include?(':nodoc:')
 
+      type = SourceDeclaration::Type.new(doc['key.kind'])
+
       # Always document Objective-C declarations.
-      return true if Config.instance.objc_mode
+      return true unless type.swift_type?
+
+      # Don't document Swift types if we are hiding Swift
+      return false if Config.instance.hide_swift?
 
       # Don't document @available declarations with no USR, since it means
       # they're unavailable.
@@ -229,110 +302,232 @@ module Jazzy
         return false
       end
 
-      # Document extensions & enum elements, since we can't tell their ACL.
-      type = SourceDeclaration::Type.new(doc['key.kind'])
+      # Document enum elements, since we can't tell their ACL.
       return true if type.swift_enum_element?
-      if type.swift_extension?
-        return Array(doc['key.substructure']).any? do |subdoc|
-          subtype = SourceDeclaration::Type.new(subdoc['key.kind'])
-          !subtype.mark? && should_document?(subdoc)
-        end
-      end
+      # Document extensions if they might have parts covered by the ACL.
+      return should_document_swift_extension?(doc) if type.swift_extension?
 
-      SourceDeclaration::AccessControlLevel.from_doc(doc) >= @min_acl
+      acl_ok = SourceDeclaration::AccessControlLevel.from_doc(doc) >= @min_acl
+      unless acl_ok
+        @stats.add_acl_skipped
+        @inaccessible_protocols.append(doc['key.name']) if type.swift_protocol?
+      end
+      acl_ok
     end
     # rubocop:enable Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/PerceivedComplexity
 
-    def self.should_mark_undocumented(kind, filepath)
+    def self.should_document_swift_extension?(doc)
+      doc['key.inheritedtypes'] ||
+        Array(doc['key.substructure']).any? do |subdoc|
+          subtype = SourceDeclaration::Type.new(subdoc['key.kind'])
+          !subtype.mark? && should_document?(subdoc)
+        end
+    end
+
+    def self.should_mark_undocumented(filepath)
       source_directory = Config.instance.source_directory.to_s
-      (filepath || '').start_with?(source_directory) &&
-        kind != 'source.lang.swift.decl.generic_type_param'
+      (filepath || '').start_with?(source_directory)
     end
 
     def self.process_undocumented_token(doc, declaration)
-      filepath = doc['key.filepath']
-      objc = Config.instance.objc_mode
-      if objc || should_mark_undocumented(doc['key.kind'], filepath)
-        @undocumented_decls << declaration
-      end
-      return nil if !documented_child?(doc) && @skip_undocumented
       make_default_doc_info(declaration)
-    end
 
-    def self.make_paragraphs(doc, key)
-      return nil unless doc[key]
-      doc[key].map do |p|
-        if para = p['Para']
-          Jazzy.markdown.render(para)
-        elsif code = p['Verbatim'] || p['CodeListing']
-          Jazzy.markdown.render("```\n#{code}```\n")
-        else
-          warn "Jazzy could not recognize the `#{p.keys.first}` tag. " \
-               'Please report this by filing an issue at ' \
-               'https://github.com/realm/jazzy/issues along with the comment ' \
-               'including this tag.'
-          Jazzy.markdown.render(p.values.first)
-        end
-      end.join
-    end
+      filepath = doc['key.filepath']
 
-    def self.parameters(doc)
-      (doc['key.doc.parameters'] || []).map do |p|
-        {
-          name: p['name'],
-          discussion: make_paragraphs(p, 'discussion'),
-        }
+      if !declaration.swift? || should_mark_undocumented(filepath)
+        @stats.add_undocumented(declaration)
+        return nil if @skip_undocumented
+        declaration.abstract = undocumented_abstract
+      else
+        declaration.abstract = Markdown.render(doc['key.doc.comment'] || '',
+                                               declaration.highlight_language)
       end
+
+      declaration
     end
 
-    # rubocop:disable Metrics/CyclomaticComplexity
-    # rubocop:disable Metrics/PerceivedComplexity
+    def self.parameters(doc, discovered)
+      (doc['key.doc.parameters'] || []).map do |p|
+        name = p['name']
+        {
+          name: name,
+          discussion: discovered[name],
+        }
+      end.reject { |param| param[:discussion].nil? }
+    end
+
     def self.make_doc_info(doc, declaration)
       return unless should_document?(doc)
+
+      highlight_declaration(doc, declaration)
+      make_deprecation_info(doc, declaration)
 
       unless doc['key.doc.full_as_xml']
         return process_undocumented_token(doc, declaration)
       end
 
-      declaration.declaration = Highlighter.highlight(
-        doc['key.parsed_declaration'] || doc['key.doc.declaration'],
-        Config.instance.objc_mode ? 'objc' : 'swift',
-      )
-      if Config.instance.objc_mode && doc['key.swift_declaration']
-        declaration.other_language_declaration = Highlighter.highlight(
-          doc['key.swift_declaration'], 'swift'
-        )
-      end
-
-      declaration.abstract = Jazzy.markdown.render(doc['key.doc.comment'] || '')
+      declaration.abstract = Markdown.render(doc['key.doc.comment'] || '',
+                                             declaration.highlight_language)
       declaration.discussion = ''
-      declaration.return = make_paragraphs(doc, 'key.doc.result_discussion')
+      declaration.return = Markdown.rendered_returns
+      declaration.parameters = parameters(doc, Markdown.rendered_parameters)
 
-      declaration.parameters = parameters(doc)
-
-      @documented_count += 1
+      @stats.add_documented
     end
-    # rubocop:enable Metrics/CyclomaticComplexity
-    # rubocop:enable Metrics/PerceivedComplexity
+
+    def self.highlight_declaration(doc, declaration)
+      if declaration.swift?
+        declaration.declaration =
+          Highlighter.highlight_swift(make_swift_declaration(doc, declaration))
+      else
+        declaration.declaration =
+          Highlighter.highlight_objc(
+            make_objc_declaration(doc['key.parsed_declaration']),
+          )
+        declaration.other_language_declaration =
+          Highlighter.highlight_swift(doc['key.swift_declaration'])
+      end
+    end
+
+    def self.make_deprecation_info(doc, declaration)
+      if declaration.deprecated
+        declaration.deprecation_message =
+          Markdown.render(doc['key.deprecation_message'] || '')
+      end
+      if declaration.unavailable
+        declaration.unavailable_message =
+          Markdown.render(doc['key.unavailable_message'] || '')
+      end
+    end
+
+    # Strip tags and convert entities
+    def self.xml_to_text(xml)
+      document = REXML::Document.new(xml)
+      REXML::XPath.match(document.root, '//text()').map(&:value).join
+    rescue
+      ''
+    end
+
+    # Regexp to match an @attribute.  Complex to handle @available().
+    def self.attribute_regexp(name)
+      qstring = /"(?:[^"\\]*|\\.)*"/
+      %r{@#{name}      # @attr name
+        (?:\s*\(       # optionally followed by spaces + parens,
+          (?:          # containing any number of either..
+            [^")]*|    # normal characters or...
+            #{qstring} # quoted strings.
+          )*           # (end parens content)
+        \))?           # (end optional parens)
+      }x
+    end
+
+    # Get all attributes of some name
+    def self.extract_attributes(declaration, name = '\w+')
+      attrs = declaration.scan(attribute_regexp(name))
+      # Rouge #806 workaround, use unicode lookalike for ')' inside attributes.
+      attrs.map { |str| str.gsub(/\)(?!\s*$)/, "\ufe5a") }
+    end
+
+    def self.extract_availability(declaration)
+      extract_attributes(declaration, 'available')
+    end
+
+    # Split leading attributes from a decl, returning both parts.
+    def self.split_decl_attributes(declaration)
+      declaration =~ /^((?:#{attribute_regexp('\w+')}\s*)*)(.*)$/m
+      Regexp.last_match.captures
+    end
+
+    def self.prefer_parsed_decl?(parsed, annotated, type)
+      return true if annotated.empty?
+      return false unless parsed
+      return false if type.swift_variable? # prefer { get }-style
+
+      annotated.include?(' = default') || # SR-2608
+        (parsed.scan(/@autoclosure|@escaping/).count >
+         annotated.scan(/@autoclosure|@escaping/).count) || # SR-6321
+        parsed.include?("\n") # user formatting
+    end
+
+    # Apply fixes to improve the compiler's declaration
+    def self.fix_up_compiler_decl(annotated_decl, declaration)
+      annotated_decl.
+        # Replace the fully qualified name of a type with its base name
+        gsub(declaration.fully_qualified_name_regexp,
+             declaration.name).
+        # Workaround for SR-9816
+        gsub(" {\n  get\n  }", '').
+        # Workaround for SR-12139
+        gsub(/mutating\s+mutating/, 'mutating')
+    end
+
+    # Find the best Swift declaration
+    def self.make_swift_declaration(doc, declaration)
+      # From compiler 'quick help' style
+      annotated_decl_xml = doc['key.annotated_decl']
+
+      return nil unless annotated_decl_xml
+
+      annotated_decl_attrs, annotated_decl_body =
+        split_decl_attributes(xml_to_text(annotated_decl_xml))
+
+      # From source code
+      parsed_decl = doc['key.parsed_declaration']
+
+      # Don't present type attributes on extensions
+      return parsed_decl if declaration.type.extension?
+
+      decl =
+        if prefer_parsed_decl?(parsed_decl,
+                               annotated_decl_body,
+                               declaration.type)
+          # Strip any attrs captured by parsed version
+          inline_attrs, parsed_decl_body = split_decl_attributes(parsed_decl)
+          parsed_decl_body.unindent(inline_attrs.length)
+        else
+          # Improve the compiler declaration
+          fix_up_compiler_decl(annotated_decl_body, declaration)
+        end
+
+      # @available attrs only in compiler 'interface' style
+      available_attrs = extract_availability(doc['key.doc.declaration'] || '')
+
+      available_attrs.concat(extract_attributes(annotated_decl_attrs))
+                     .push(decl)
+                     .join("\n")
+    end
+
+    # Strip default property attributes because libclang
+    # adds them all, even if absent in the original source code.
+    DEFAULT_ATTRIBUTES = %w[atomic readwrite assign unsafe_unretained].freeze
+
+    def self.make_objc_declaration(declaration)
+      return declaration if Config.instance.keep_property_attributes
+
+      declaration =~ /\A@property\s+\((.*?)\)/
+      return declaration unless Regexp.last_match
+
+      attrs = Regexp.last_match[1].split(',').map(&:strip) - DEFAULT_ATTRIBUTES
+      attrs_text = attrs.empty? ? '' : " (#{attrs.join(', ')})"
+
+      declaration.sub(/(?<=@property)\s+\(.*?\)/, attrs_text)
+                 .gsub(/\s+/, ' ')
+    end
 
     def self.make_substructure(doc, declaration)
-      declaration.children = if doc['key.substructure']
-                               make_source_declarations(
-                                 doc['key.substructure'],
-                                 declaration,
-                               )
-                             else
-                               []
-                             end
+      return [] unless subdocs = doc['key.substructure']
+      make_source_declarations(subdocs,
+                               declaration,
+                               declaration.mark_for_children)
     end
 
     # rubocop:disable Metrics/MethodLength
     # rubocop:disable Metrics/CyclomaticComplexity
     # rubocop:disable Metrics/PerceivedComplexity
-    def self.make_source_declarations(docs, parent = nil)
+    def self.make_source_declarations(docs, parent = nil, mark = SourceMark.new)
       declarations = []
-      current_mark = SourceMark.new
+      current_mark = mark
       Array(docs).each do |doc|
         if doc.key?('key.diagnostic_stage')
           declarations += make_source_declarations(
@@ -344,11 +539,19 @@ module Jazzy
         declaration.parent_in_code = parent
         declaration.type = SourceDeclaration::Type.new(doc['key.kind'])
         declaration.typename = doc['key.typename']
-        current_mark = SourceMark.new(doc['key.name']) if declaration.type.mark?
+        declaration.objc_name = doc['key.name']
+        documented_name = if Config.instance.hide_objc? && doc['key.swift_name']
+                            doc['key.swift_name']
+                          else
+                            declaration.objc_name
+                          end
+        if declaration.type.task_mark?(documented_name)
+          current_mark = SourceMark.new(documented_name)
+        end
         if declaration.type.swift_enum_case?
           # Enum "cases" are thin wrappers around enum "elements".
           declarations += make_source_declarations(
-            doc['key.substructure'], parent
+            doc['key.substructure'], parent, current_mark
           )
           next
         end
@@ -362,8 +565,9 @@ module Jazzy
 
         declaration.file = Pathname(doc['key.filepath']) if doc['key.filepath']
         declaration.usr = doc['key.usr']
+        declaration.type_usr = doc['key.typeusr']
         declaration.modulename = doc['key.modulename']
-        declaration.name = doc['key.name']
+        declaration.name = documented_name
         declaration.mark = current_mark
         declaration.access_control_level =
           SourceDeclaration::AccessControlLevel.from_doc(doc)
@@ -371,9 +575,19 @@ module Jazzy
         declaration.column = doc['key.doc.column']
         declaration.start_line = doc['key.parsed_scope.start']
         declaration.end_line = doc['key.parsed_scope.end']
+        declaration.deprecated = doc['key.always_deprecated']
+        declaration.unavailable = doc['key.always_unavailable']
+        declaration.generic_requirements =
+          find_generic_requirements(doc['key.parsed_declaration'])
+        inherited_types = doc['key.inheritedtypes'] || []
+        declaration.inherited_types =
+          inherited_types.map { |type| type['key.name'] }.compact
 
         next unless make_doc_info(doc, declaration)
-        make_substructure(doc, declaration)
+        declaration.children = make_substructure(doc, declaration)
+        next if declaration.type.extension? &&
+                declaration.children.empty? &&
+                !declaration.inherited_types?
         declarations << declaration
       end
       declarations
@@ -382,10 +596,45 @@ module Jazzy
     # rubocop:enable Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/MethodLength
 
-    def self.doc_coverage
-      return 0 if @documented_count == 0 && @undocumented_decls.count == 0
-      (100 * @documented_count) /
-        (@undocumented_decls.count + @documented_count)
+    def self.find_generic_requirements(parsed_declaration)
+      parsed_declaration =~ /\bwhere\s+(.*)$/m
+      return nil unless Regexp.last_match
+      Regexp.last_match[1].gsub(/\s+/, ' ')
+    end
+
+    # Expands extensions of nested types declared at the top level into
+    # a tree so they can be deduplicated properly
+    def self.expand_extensions(decls)
+      decls.map do |decl|
+        next decl unless decl.type.extension? && decl.name.include?('.')
+
+        # Don't expand the Swift namespace if we're in ObjC mode.
+        # ex: NS_SWIFT_NAME(Foo.Bar) should not create top-level Foo
+        next decl if decl.swift_objc_extension? && !Config.instance.hide_objc?
+
+        name_parts = decl.name.split('.')
+        decl.name = name_parts.pop
+        expand_extension(decl, name_parts, decls)
+      end
+    end
+
+    def self.expand_extension(extension, name_parts, decls)
+      return extension if name_parts.empty?
+      name = name_parts.shift
+      candidates = decls.select { |decl| decl.name == name }
+      SourceDeclaration.new.tap do |decl|
+        make_default_doc_info(decl)
+        decl.name = name
+        decl.modulename = extension.modulename
+        decl.type = extension.type
+        decl.mark = extension.mark
+        decl.usr = candidates.first.usr unless candidates.empty?
+        child = expand_extension(extension,
+                                 name_parts,
+                                 candidates.flat_map(&:children).uniq)
+        child.parent_in_code = decl
+        decl.children = [child]
+      end
     end
 
     # Merges multiple extensions of the same entity into a single document.
@@ -399,10 +648,10 @@ module Jazzy
                          .group_by { |d| deduplication_key(d, declarations) }
                          .values
 
-      duplicate_groups.map do |group|
+      duplicate_groups.flat_map do |group|
         # Put extended type (if present) before extensions
         merge_declarations(group)
-      end
+      end.compact
     end
 
     # Returns true if an Objective-C declaration is mergeable.
@@ -412,13 +661,28 @@ module Jazzy
             && name_match(decl.objc_category_name[0], root_decls))
     end
 
+    # Returns if a Swift declaration is mergeable.
+    # Start off merging in typealiases to help understand extensions.
+    def self.mergeable_swift?(decl)
+      decl.type.swift_extensible? ||
+        decl.type.swift_extension? ||
+        decl.type.swift_typealias?
+    end
+
     # Two declarations get merged if they have the same deduplication key.
     def self.deduplication_key(decl, root_decls)
-      if decl.type.swift_extensible? || decl.type.swift_extension?
+      # Swift extension of objc class
+      if decl.swift_objc_extension?
+        [decl.swift_extension_objc_name, :objc_class_and_categories]
+      # Swift type or Swift extension of Swift type
+      elsif mergeable_swift?(decl)
         [decl.usr, decl.name]
+      # Objc categories and classes
       elsif mergeable_objc?(decl, root_decls)
-        name, _ = decl.objc_category_name || decl.name
+        # Using the ObjC name to match swift_objc_extension.
+        name, _ = decl.objc_category_name || decl.objc_name
         [name, :objc_class_and_categories]
+      # Non-mergable declarations (funcs, typedefs etc...)
       else
         [decl.usr, decl.name, decl.type.kind]
       end
@@ -433,24 +697,40 @@ module Jazzy
         warn 'Found conflicting type declarations with the same name, which ' \
           'may indicate a build issue or a bug in Jazzy: ' +
              typedecls.map { |t| "#{t.type.name.downcase} #{t.name}" }
-             .join(', ')
+                      .join(', ')
       end
       typedecl = typedecls.first
 
-      if typedecl && typedecl.type.swift_protocol?
-        merge_default_implementations_into_protocol(typedecl, extensions)
-        mark_members_from_protocol_extension(extensions)
-        extensions.reject! { |ext| ext.children.empty? }
-      elsif typedecl && typedecl.type.objc_class?
-        # Mark children merged from categories with the name of category
-        # (unless they already have a mark)
-        extensions.each do |ext|
-          _, category_name = ext.objc_category_name
-          ext.children.each { |c| c.mark.name ||= category_name }
+      extensions = reject_inaccessible_extensions(typedecl, extensions)
+
+      if typedecl
+        if typedecl.type.swift_protocol?
+          mark_and_merge_protocol_extensions(typedecl, extensions)
+          extensions.reject! { |ext| ext.children.empty? }
         end
+
+        merge_objc_declaration_marks(typedecl, extensions)
       end
 
-      decls = typedecls + extensions
+      # Keep type-aliases separate from any extensions
+      if typedecl && typedecl.type.swift_typealias?
+        [merge_type_and_extensions(typedecls, []),
+         merge_type_and_extensions([], extensions)]
+      else
+        merge_type_and_extensions(typedecls, extensions)
+      end
+    end
+    # rubocop:enable Metrics/MethodLength
+
+    def self.merge_type_and_extensions(typedecls, extensions)
+      # Constrained extensions at the end
+      constrained, regular_exts = extensions.partition(&:constrained_extension?)
+      decls = typedecls + regular_exts + constrained
+      return nil if decls.empty?
+
+      move_merged_extension_marks(decls)
+      merge_code_declaration(decls)
+
       decls.first.tap do |merged|
         merged.children = deduplicate_declarations(
           decls.flat_map(&:children).uniq,
@@ -460,42 +740,139 @@ module Jazzy
         end
       end
     end
-    # rubocop:enable Metrics/MethodLength
 
+    # Now we know all the public types and all the private protocols,
+    # reject extensions that add public protocols to private types
+    # or add private protocols to public types.
+    def self.reject_inaccessible_extensions(typedecl, extensions)
+      swift_exts, objc_exts = extensions.partition(&:swift?)
+
+      # Reject extensions that are just conformances to private protocols
+      unwanted_exts, wanted_exts = swift_exts.partition do |ext|
+        ext.children.empty? &&
+          !ext.other_inherited_types?(@inaccessible_protocols)
+      end
+
+      # Given extensions of a type from this module, without the
+      # type itself, the type must be private and the extensions
+      # should be rejected.
+      if !typedecl &&
+         wanted_exts.first &&
+         wanted_exts.first.type_from_doc_module?
+        unwanted_exts += wanted_exts
+        wanted_exts = []
+      end
+
+      # Don't tell the user to document them
+      unwanted_exts.each { |e| @stats.remove_undocumented(e) }
+
+      objc_exts + wanted_exts
+    end
+
+    # Protocol extensions.
+    #
     # If any of the extensions provide default implementations for methods in
     # the given protocol, merge those members into the protocol doc instead of
     # keeping them on the extension. These get a “Default implementation”
-    # annotation in the generated docs.
-    def self.merge_default_implementations_into_protocol(protocol, extensions)
-      protocol.children.each do |proto_method|
-        extensions.each do |ext|
-          defaults, ext.children = ext.children.partition do |ext_member|
-            ext_member.name == proto_method.name
-          end
-          unless defaults.empty?
-            proto_method.default_impl_abstract =
-              defaults.flat_map { |d| [d.abstract, d.discussion] }.join("\n\n")
-          end
-        end
-      end
-    end
-
+    # annotation in the generated docs.  Default implementations added by
+    # conditional extensions are annotated but listed separately.
+    #
     # Protocol methods provided only in an extension and not in the protocol
     # itself are a special beast: they do not use dynamic dispatch. These get an
     # “Extension method” annotation in the generated docs.
-    def self.mark_members_from_protocol_extension(extensions)
+    def self.mark_and_merge_protocol_extensions(protocol, extensions)
       extensions.each do |ext|
-        ext.children.each do |ext_member|
-          ext_member.from_protocol_extension = true
+        ext.children = ext.children.select do |ext_member|
+          proto_member = protocol.children.find do |p|
+            p.name == ext_member.name && p.type == ext_member.type
+          end
+
+          # Extension-only method, keep.
+          unless proto_member
+            ext_member.from_protocol_extension = true
+            next true
+          end
+
+          # Default impl but constrained, mark and keep.
+          if ext.constrained_extension?
+            ext_member.default_impl_abstract = ext_member.abstract
+            ext_member.abstract = nil
+            next true
+          end
+
+          # Default impl for all users, merge.
+          proto_member.default_impl_abstract = ext_member.abstract
+          next false
         end
       end
     end
 
+    # Mark children merged from categories with the name of category
+    # (unless they already have a mark)
+    def self.merge_objc_declaration_marks(typedecl, extensions)
+      return unless typedecl.type.objc_class?
+      extensions.each do |ext|
+        _, category_name = ext.objc_category_name
+        ext.children.each { |c| c.mark.name ||= category_name }
+      end
+    end
+
+    # For each extension to be merged, move any MARK from the extension
+    # declaration down to the extension contents so it still shows up.
+    def self.move_merged_extension_marks(decls)
+      return unless to_be_merged = decls[1..-1]
+      to_be_merged.each do |ext|
+        child = ext.children.first
+        if child && child.mark.empty?
+          child.mark.copy(ext.mark)
+        end
+      end
+    end
+
+    # Merge useful information added by extensions into the main
+    # declaration: public protocol conformances and, for top-level extensions,
+    # further conditional extensions of the same type.
+    def self.merge_code_declaration(decls)
+      first = decls.first
+
+      declarations = decls[1..-1].select do |decl|
+        decl.type.swift_extension? &&
+          (decl.other_inherited_types?(@inaccessible_protocols) ||
+            (first.type.swift_extension? && decl.constrained_extension?))
+      end.map(&:declaration)
+
+      unless declarations.empty?
+        first.declaration = declarations.prepend(first.declaration).uniq.join
+      end
+    end
+
+    # Apply filtering based on the "included" and "excluded" flags.
+    def self.filter_files(json)
+      json = filter_included_files(json) if Config.instance.included_files.any?
+      json = filter_excluded_files(json) if Config.instance.excluded_files.any?
+      json.map do |doc|
+        key = doc.keys.first
+        doc[key]
+      end.compact
+    end
+
+    # Filter based on the "included" flag.
+    def self.filter_included_files(json)
+      included_files = Config.instance.included_files
+      json.map do |doc|
+        key = doc.keys.first
+        doc if included_files.detect do |include|
+          File.fnmatch?(include, key)
+        end
+      end.compact
+    end
+
+    # Filter based on the "excluded" flag.
     def self.filter_excluded_files(json)
       excluded_files = Config.instance.excluded_files
       json.map do |doc|
         key = doc.keys.first
-        doc[key] unless excluded_files.detect do |exclude|
+        doc unless excluded_files.detect do |exclude|
           File.fnmatch?(exclude, key)
         end
       end.compact
@@ -505,7 +882,7 @@ module Jazzy
       return nil unless name_part
       wildcard_expansion = Regexp.escape(name_part)
                                  .gsub('\.\.\.', '[^)]*')
-                                 .gsub(/&lt;.*&gt;/, '')
+                                 .gsub(/<.*>/, '')
       whole_name_pat = /\A#{wildcard_expansion}\Z/
       docs.find do |doc|
         whole_name_pat =~ doc.name
@@ -537,9 +914,9 @@ module Jazzy
     # The `after_highlight` flag is used to differentiate between the two modes.
     def self.autolink_text(text, doc, root_decls, after_highlight = false)
       text.autolink_block(doc.url, '[^\s]+', after_highlight) do |raw_name|
-        parts = raw_name
-                .split(/(?<!\.)\.(?!\.)/) # dot with no neighboring dots
-                .reject(&:empty?)
+        parts = raw_name.sub(/^@/, '') # ignore for custom attribute ref
+                        .split(/(?<!\.)\.(?!\.)/) # dot with no neighboring dots
+                        .reject(&:empty?)
 
         # First dot-separated component can match any ancestor or top-level doc
         first_part = parts.shift
@@ -566,31 +943,47 @@ module Jazzy
       end
     end
 
+    AUTOLINK_TEXT_FIELDS = %w[return
+                              abstract
+                              unavailable_message
+                              deprecation_message].freeze
+
+    AUTOLINK_HIGHLIGHT_FIELDS = %w[declaration
+                                   other_language_declaration].freeze
+
     def self.autolink(docs, root_decls)
+      @autolink_root_decls = root_decls
       docs.each do |doc|
         doc.children = autolink(doc.children, root_decls)
 
-        doc.return = autolink_text(doc.return, doc, root_decls) if doc.return
-        doc.abstract = autolink_text(doc.abstract, doc, root_decls)
-
-        if doc.declaration
-          doc.declaration = autolink_text(
-            doc.declaration, doc, root_decls, true
-          )
+        AUTOLINK_TEXT_FIELDS.each do |field|
+          if text = doc.send(field)
+            doc.send(field + '=', autolink_text(text, doc, root_decls))
+          end
         end
 
-        if doc.other_language_declaration
-          doc.other_language_declaration = autolink_text(
-            doc.other_language_declaration, doc, root_decls, true
-          )
+        AUTOLINK_HIGHLIGHT_FIELDS.each do |field|
+          if text = doc.send(field)
+            doc.send(field + '=', autolink_text(text, doc, root_decls, true))
+          end
+        end
+
+        (doc.parameters || []).each do |param|
+          param[:discussion] =
+            autolink_text(param[:discussion], doc, root_decls)
         end
       end
+    end
+
+    # For autolinking external markdown documents
+    def self.autolink_document(html, doc)
+      autolink_text(html, doc, @autolink_root_decls || [])
     end
 
     def self.reject_objc_types(docs)
       enums = docs.map do |doc|
         [doc, doc.children]
-      end.flatten.select { |child| child.type.objc_enum? }.map(&:name)
+      end.flatten.select { |child| child.type.objc_enum? }.map(&:objc_name)
       docs.map do |doc|
         doc.children = doc.children.reject do |child|
           child.type.objc_typedef? && enums.include?(child.name)
@@ -607,21 +1000,22 @@ module Jazzy
     def self.parse(sourcekitten_output, min_acl, skip_undocumented, inject_docs)
       @min_acl = min_acl
       @skip_undocumented = skip_undocumented
-      sourcekitten_json = filter_excluded_files(JSON.parse(sourcekitten_output))
+      @stats = Stats.new
+      @inaccessible_protocols = []
+      sourcekitten_json = filter_files(JSON.parse(sourcekitten_output).flatten)
       docs = make_source_declarations(sourcekitten_json).concat inject_docs
+      docs = expand_extensions(docs)
       docs = deduplicate_declarations(docs)
-      if Config.instance.objc_mode
-        docs = reject_objc_types(docs)
-      else
-        # Remove top-level enum cases because it means they have an ACL lower
-        # than min_acl
-        docs = docs.reject { |doc| doc.type.swift_enum_element? }
-      end
+      docs = reject_objc_types(docs)
+      # Remove top-level enum cases because it means they have an ACL lower
+      # than min_acl
+      docs = docs.reject { |doc| doc.type.swift_enum_element? }
       ungrouped_docs = docs
       docs = group_docs(docs)
+      merge_consecutive_marks(docs)
       make_doc_urls(docs)
       autolink(docs, ungrouped_docs)
-      [docs, doc_coverage, @undocumented_decls]
+      [docs, @stats]
     end
   end
 end

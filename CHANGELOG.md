@@ -12,6 +12,719 @@
 
 * None.
 
+## 0.13.5
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Add search function to `apple` theme.  
+  [Giles Payne](https://github.com/komakai)
+  [#726](https://github.com/realm/jazzy/issues/726)
+
+* Add option `--[no-]separate-global-declarations` to always create separate
+  documentation pages for top-level declarations as well as classes,
+  structures, enums etc. even if they don't have members. As part of this,
+  improve the main page declaration in all modes.  
+  [Nikolay Volosatov](https://github.com/bamx23)
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Style fixes for `apple` and `jony` themes to codeblocks inside lists and
+  links.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#818](https://github.com/realm/jazzy/issues/818)
+  [#1177](https://github.com/realm/jazzy/issues/1177)
+
+## 0.13.4
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Update JavaScript libraries: jQuery 3.5.1 (all themes), Lunr 2.3.8,
+  typeahead.js 1.3.1 (`fullwidth` theme only).  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Fix warnings from Ruby 2.7.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1185](https://github.com/realm/jazzy/issues/1185)
+
+* Accept `root_url` without trailing slash.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1188](https://github.com/realm/jazzy/issues/1188)
+
+## 0.13.3
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Added a config option to provide sources of privately hosted pod
+  dependencies when using the `--podspec` option.
+  `--pod-sources url1,url2,…urlN`.  
+  [Jonathan Bailey](https://github.com/jon889)
+  [#650](https://github.com/realm/jazzy/issues/650)
+
+* Improve Dash docset support: support online redirection when
+  `--root-url` is set, and provide `--docset-playground-url` to
+  support docset playground links.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Fix module version not being used from podspec.  
+  [Jonathan Bailey](https://github.com/jon889)
+
+* Autolink Swift custom attributes/property wrappers.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+## 0.13.2
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Support Xcode 11.4.  Default Objective-C property attributes are now
+  stripped from declarations: turn this off with
+  `--keep-default-property-attributes`.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#829](https://github.com/realm/jazzy/issues/829)
+
+* Render LaTeX expressions written using `$equation$` or `$$equation$$`
+  syntax.  
+  [Arthur Guiot](https://github.com/arguiot)
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1156](https://github.com/realm/jazzy/issues/1156)
+
+* Wrap long method names on category pages.  Use `name_html` in custom
+  mustache templates to take advantage of this.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#995](https://github.com/realm/jazzy/issues/995)
+
+* Support Dash-style `apple_ref` links to specific API items, for more
+  stable and human-readable links from external docs.  
+  [Paul Cantrell](https://github.com/pcantrell)
+
+##### Bug Fixes
+
+* Don't generate documentation if the `xcodebuild` command fails.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [jpsim/SourceKitten#643](https://github.com/jpsim/SourceKitten/issues/643)
+
+* Use multi-line parsed declarations in more places including protocol
+  methods and typealiases.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#896](https://github.com/realm/jazzy/issues/896)
+
+## 0.13.1
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Allow inline html tags in ObjC doc comments.  
+  [Chris Williams](https://github.com/ultramiraculous)
+  [#976](https://github.com/realm/jazzy/issues/976)
+
+* Support code formatting in ObjC doc comments with `@c`, `@code` and
+  `@endcode`.  
+  [Bryce Pauken](https://github.com/brycepauken)
+  [jpsim/SourceKitten#631](https://github.com/jpsim/SourceKitten/issues/631)
+
+* Add `custom_categories_unlisted_prefix` configuration setting. This
+  is the prefix for navigation section names that aren't explicitly
+  listed in `custom_categories`. Defaults to 'Other '.  
+  [JP Simard](https://github.com/jpsim)
+
+* Add `hide_unlisted_documentation` configuration setting. Setting this
+  to `true` hides documentation entries in the sidebar from the
+  `documentation` config value that aren't explicitly listed in
+  `custom_categories`.  
+  [JP Simard](https://github.com/jpsim)
+
+##### Bug Fixes
+
+* Fix crash when SourceKit returns out of bounds string byte offsets.  
+  [JP Simard](https://github.com/jpsim)
+
+* Pick the right version of declarations with type attributes.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1148](https://github.com/realm/jazzy/issues/1148)
+
+## 0.13.0
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Add section headings for members added by Swift conditional conformances.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#717](https://github.com/realm/jazzy/issues/717)
+
+* Parse markdown in MARK comments, make the html available to themes via
+  `name_html` mustache tag key for section headings.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Include protocol conformances added by extensions in Swift docs.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Render bullet lists correctly when followed by a callout.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#785](https://github.com/realm/jazzy/issues/785)
+
+* Render markup of text inside double quotes.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#992](https://github.com/realm/jazzy/issues/992)
+
+* Fix `sourcekitten_sourcefile` used from config file.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1137](https://github.com/realm/jazzy/issues/1137)
+
+## 0.12.0
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Support for mixed Swift-ObjC modules: generate two sets of SourceKitten
+  json and pass them on using `--sourcekitten-sourcefile`.  
+  [Joe Susnick](https://github.com/joesus)
+  [John Fairhurst](https://github.com/johnfairh)
+  [#447](https://github.com/realm/jazzy/issues/447)
+
+##### Bug Fixes
+
+* Stop displaying type attributes on extension declarations.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Show ObjC and Swift classes (etc.) in the same category.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Merge Swift extensions into ObjC classes.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [Joe Susnick](https://github.com/joesus)
+
+## 0.11.2
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* Generate Swift docs with Xcode 11 and paths with spaces.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1108](https://github.com/realm/jazzy/issues/1108)
+
+* Reinstate guessing of module name from podspec, broken in 0.11.0.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1109](https://github.com/realm/jazzy/issues/1109)
+
+## 0.11.1
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* Don't use SwiftPM if there is an Xcode workspace or project in a non-root
+  directory.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1103](https://github.com/realm/jazzy/issues/1103)
+
+## 0.11.0
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Sass support now provided by `libsass` via `sassc` instead of the
+  deprecated Ruby Sass gem.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Update bundled jQuery to 3.4.1 (all themes).  
+  [Paul Idstein](https://github.com/idstein)
+
+* Support Xcode 11 Swift projects that pass a response file to the Swift
+  compiler.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1087](https://github.com/realm/jazzy/issues/1087)
+
+* Generate Swift docs from a Swift Package Manager package without
+  requiring an Xcode project file.  Add `--swift-build-tool` to choose
+  the build method if both `.xcodeproj` and `Package.swift` files are
+  present.  Add `--build-tool-flags` as a preferred alias for
+  `--xcodebuild-flags`.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#487](https://github.com/realm/jazzy/issues/487)
+
+##### Bug Fixes
+
+* Preserve non-latin characters in guide filenames and heading IDs.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1091](https://github.com/realm/jazzy/issues/1091)
+
+* Generate correct html for custom categories containing special
+  characters.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#945](https://github.com/realm/jazzy/issues/945)
+
+* Fix crash on files with misplaced documentation comments.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1083](https://github.com/realm/jazzy/issues/1083)
+
+## 0.10.0
+
+##### Breaking
+
+* The included `sourcekitten` binary is built with Xcode 10.2.  This means
+  it does not run on macOS earlier than 10.14.4 without the *Swift 5 Runtime
+  Support for Command Line Tools* being installed.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Enhancements
+
+* Support CocoaPods 1.6+.  Use the `swift_version[s]` dsl in `--podspec` mode
+  to set the Swift language version.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Show the extension declaration when documenting Swift extensions.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Allow docs title customization.  Include `--module-version` when it is set
+  and support `--title` to fully customize the title.  Pass `{{module_version}}`
+  and `{{docs_title}}` to templates.  
+  [Maximilian Alexander](https://github.com/mbalex99)
+  [John Fairhurst](https://github.com/johnfairh)
+  [#666](https://github.com/realm/jazzy/issues/666)
+  [#411](https://github.com/realm/jazzy/issues/411)
+
+##### Bug Fixes
+
+* Unfold member documentation when linked to from current web page.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#788](https://github.com/realm/jazzy/issues/788)
+
+* Generate docs when there are unusual characters in source pathnames.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1049](https://github.com/realm/jazzy/issues/1049)
+
+* Generate docs for signed modules with Xcode 10.2.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1057](https://github.com/realm/jazzy/issues/1057)
+
+* Use correct module name when only target name is supplied.  
+  [Chris Zielinski](https://github.com/chriszielinski)
+  [#422](https://github.com/realm/jazzy/issues/422)
+
+## 0.9.6
+
+This is (probably) the last release to support Ruby earlier than 2.3.
+This is due to a change in a dependency.
+
+This is (probably) the last release to support macOS earlier than 10.14.4
+without the *Swift 5 Runtime Support for Command Line Tools* package installed.
+This is a consequence of Swift 5 ABI stability.
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Swift 5 support: suppress unwanted newlines and `deinit` declarations.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Update JavaScript libraries: jQuery 3.3.1 (all themes), Lunr 2.3.5,
+  typeahead.js 1.2.1 (`fullwidth` theme only).  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#901](https://github.com/realm/jazzy/issues/901)
+
+* Avoid `clean build` when using the new Xcode build system.  
+  [Norio Nomura](https://github.com/norio-nomura)
+
+##### Bug Fixes
+
+* None.
+
+## 0.9.5
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Link to documentation pages from contents pages.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#730](https://github.com/realm/jazzy/issues/730)
+
+* Call out unavailable and deprecated Objective-C declarations.  
+  [Stefan Kieleithner](https://github.com/steviki)
+  [John Fairhurst](https://github.com/johnfairh)
+  [#843](https://github.com/realm/jazzy/issues/843)
+
+##### Bug Fixes
+
+* Support Swift 4.2 with `--podspec`.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1015](https://github.com/realm/jazzy/issues/1015)
+
+* Fix multiline copyright for `apple` theme.  
+  [Fabien Lydoire](https://github.com/fabienlydoire)
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1016](https://github.com/realm/jazzy/issues/1016)
+
+## 0.9.4
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* Fix crash with pre-existing `Docs` directory.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#965](https://github.com/realm/jazzy/issues/965)
+
+* Fix crash with unicode scalars in string literals.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#972](https://github.com/realm/jazzy/issues/972)
+
+* Fix error compiling a Swift podspec in Xcode 10.  
+  [Minh Nguyễn](https://github.com/1ec5)
+  [#970](https://github.com/realm/jazzy/issues/970)
+
+## 0.9.3
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* Fix crash when specifying empty Swift version. Now correctly uses the default
+  Swift version.  
+  [JP Simard](https://github.com/jpsim)
+
+* Fix jony theme selection.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#962](https://github.com/realm/jazzy/issues/962)
+
+## 0.9.2
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Add a new 'jony' theme similar to the 2017 Apple documentation style.  
+  [Harshil Shah](https://github.com/HarshilShah)
+
+* Add the ability to limit documentation to certain files by passing in an
+  `-i`/`--include` argument.  
+  [Nick Fox](https://github.com/nicholasffox)
+  [#949](https://github.com/realm/jazzy/issues/949)
+
+* Improve Swift declarations to look more like the Xcode Quick Help version,
+  for example including `{ get set }`, and include all attributes.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#768](https://github.com/realm/jazzy/issues/768)
+  [#591](https://github.com/realm/jazzy/issues/591)
+
+##### Bug Fixes
+
+* Preserve `MARK` comment headings associated with extensions and enum cases.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Fix issue where Overview items were invalidly being referenced with NULL
+  types in the generated Dash docset index.  
+  [Andrew De Ponte](https://github.com/cyphactor)
+
+* Don't display FIXME or TODO comments as section markers.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#658](https://github.com/realm/jazzy/issues/658)
+
+## 0.9.1
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Added a config option (`--undocumented-text UNDOCUMENTED_TEXT`) to set the
+  default text for undocumented symbols.  
+  [Akhil Batra](https://github.com/akhillies)
+  [#913](https://github.com/realm/jazzy/issues/913)
+
+* Added a config option to hide Objective-C or Swift declarations:
+  `--hide-declarations [objc|swift]`.  
+  [Ibrahim Ulukaya](https://github.com/ulukaya)
+  [#828](https://github.com/realm/jazzy/issues/828)
+
+* Automatically use Swift or Objective-C syntax highlighting for code blocks
+  in documentation comments.  Improve Swift highlighting with latest Rouge.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#218](https://github.com/realm/jazzy/issues/218)
+
+##### Bug Fixes
+
+* Fix Swift declarations when generating Objective-C docs for generic types.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#910](https://github.com/realm/jazzy/issues/910)
+
+* Don't create documentation nodes for generic type parameters.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#878](https://github.com/realm/jazzy/issues/878)
+
+## 0.9.0
+
+##### Breaking
+
+* Generate documentation coverage badge locally. Since this avoids the failable
+  HTTP request to shields.io previously used to obtain the badge, we've removed
+  the `--[no-]download-badge` flag and the corresponding `download_badge`
+  YAML configuration key.  
+  [Samuel Giddins](https://github.com/segiddins)
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* Fixed issue that prevented Jazzy from running on case sensitive file systems.  
+  [Jeremy David Giesbrecht](https://github.com/SDGGiesbrecht)
+  [#891](https://github.com/realm/jazzy/issues/891)
+
+* Fixed issue preventing `--podspec` from working with `test_spec`s.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#894](https://github.com/realm/jazzy/issues/894)
+
+* Always display correct declaration for undocumented symbols.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#864](https://github.com/realm/jazzy/issues/864)
+
+* Trim common indentation in multiline declarations.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#836](https://github.com/realm/jazzy/issues/836)
+
+## 0.8.4
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Align jazzy terminology with Apple usage.  
+  [Xiaodi Wu](https://github.com/xwu)
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Add `url` attribute that can be more accurate than `{{section}}.html` as a URL
+  in custom templates.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Fix crash when specifying `swift_version` as a floating point value in
+  `.jazzy.yaml` rather than a string.  
+  [JP Simard](https://github.com/jpsim)
+  [#860](https://github.com/realm/jazzy/issues/860)
+
+* Autolink from parameter documentation and from external markdown documents
+  including README.  Autolink to symbols containing & < >.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#715](https://github.com/realm/jazzy/issues/715)
+  [#789](https://github.com/realm/jazzy/issues/789)
+  [#805](https://github.com/realm/jazzy/issues/805)
+
+* Fix Swift 4 declarations containing ampersands (`&`) being truncated.  
+  [JP Simard](https://github.com/jpsim)
+
+## 0.8.3
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Generate Swift declaration for more Objective-C declarations.  
+  [Zheng Li](https://github.com/ainopara)
+
+* Improve quality & accuracy of Swift interfaces for Objective-C declarations
+  when generating Objective-C docs.  
+  [Norio Nomura](https://github.com/norio-nomura)
+
+* Process Swift 3.2/4 doc comments.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Fix missing doc comments on some extensions.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#454](https://github.com/realm/jazzy/issues/454)
+
+* Fix failure when attempting to download documentation coverage badge with
+  jazzy using macOS system Ruby, or a Ruby built with outdated versions of
+  OpenSSL.  
+  [JP Simard](https://github.com/jpsim)
+  [#824](https://github.com/realm/jazzy/issues/824)
+
+* Stop `--skip-undocumented` from skipping documented items nested
+  inside extensions of types from other modules.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#502](https://github.com/realm/jazzy/issues/502)
+
+* Fix members added to extensions of a nested type showing up in the parent.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#333](https://github.com/realm/jazzy/issues/333)
+
+## 0.8.2
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Report number of included and skipped declarations in CLI output.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#238](https://github.com/realm/jazzy/issues/238)
+
+* Build ObjC docs with clang modules enabled by default (`-fmodules` flag).  
+  [Maksym Grebenets](https://github.com/mgrebenets)
+  [#636](https://github.com/realm/jazzy/issues/636)
+
+* Shave ~1MB from jazzy's gem distribution.  
+  [JP Simard](https://github.com/jpsim)
+
+##### Bug Fixes
+
+* Fix support for Ruby 2.2.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#801](https://github.com/realm/jazzy/issues/801)
+
+* Fix many cases of incorrect, missing or superfluous docs on Swift
+  declarations.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+## 0.8.1
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Allow all markdown in returns and parameter description callouts.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#476](https://github.com/realm/jazzy/issues/476)
+
+##### Bug Fixes
+
+* Fix a crash that occurred when a documentation comment ended with an extended
+  grapheme cluster.  
+  [Lukas Stührk](https://github.com/Lukas-Stuehrk)
+  [#794](https://github.com/realm/jazzy/issues/794)
+  [SourceKitten#350](https://github.com/jpsim/SourceKitten/issues/350)
+
+## 0.8.0
+
+##### Breaking
+
+* `undocumented.json` is now only in the output directory and is no longer
+  copied into docsets.  
+  [Jeremy David Giesbrecht](https://github.com/SDGGiesbrecht)
+  [#754](https://github.com/realm/jazzy/issues/754)
+
+##### Enhancements
+
+* Add `--[no-]download-badge` flag to skip downloading the documentation
+  coverage badge from shields.io. Useful if generating docs offline.  
+  [JP Simard](https://github.com/jpsim)
+  [#765](https://github.com/realm/jazzy/issues/765)
+
+##### Bug Fixes
+
+* Blank line no longer needed before lists or code blocks.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#546](https://github.com/realm/jazzy/issues/546)
+
+* Linking to headers in apple theme gives correct vertical alignment.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+* Headers in source code markdown no longer cause corruption.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#628](https://github.com/realm/jazzy/issues/628)
+
+## 0.7.5
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* None.
+
+##### Bug Fixes
+
+* Fix issue where using a custom theme would crash jazzy when using Ruby 2.4.  
+  [Jason Wray](https://github.com/friedbunny)
+  [#752](https://github.com/realm/jazzy/issues/752)
+
+* Fix support for Ruby 2.0.0.  
+  [Jason Wray](https://github.com/friedbunny)
+  [#747](https://github.com/realm/jazzy/issues/747)
+
+* Fix issue where header files are not found if inside subdirectories of the
+  framework_root specified folder.  
+  [Christopher Gretzki](https://github.com/gretzki)
+  [#518](https://github.com/realm/jazzy/issues/518)
+
 ## 0.7.4
 
 ##### Breaking
@@ -161,7 +874,7 @@
   [Shmuel Kallner](https://github.com/shmuelk)
   [#645](https://github.com/realm/jazzy/issues/645)
   [#646](https://github.com/realm/jazzy/issues/646)
- 
+
 ##### Bug Fixes
 
 * Fix issue where jazzy could not be installed from Gemfile due to
@@ -477,7 +1190,7 @@
   [#310](https://github.com/realm/jazzy/pull/310)
 
 * Render special list items (e.g. Throws, See, etc.). See
-  http://ericasadun.com/2015/06/14/swift-header-documentation-in-xcode-7/ for
+  https://ericasadun.com/2015/06/14/swift-header-documentation-in-xcode-7/ for
   a complete list.  
   [JP Simard](https://github.com/jpsim)
   [#317](https://github.com/realm/jazzy/issues/317)
