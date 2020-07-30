@@ -469,6 +469,7 @@ module Jazzy
       doc[:declaration] = doc_model.display_declaration
       doc[:other_language_declaration] = doc_model.display_other_language_declaration
       doc[:display_language] = doc_model.display_language
+      doc[:language] = doc_model.display_language
       doc[:overview] = overview
       doc[:structure] = source_module.doc_structure
       doc[:tasks] = render_tasks(source_module, doc_model.children)
