@@ -203,7 +203,7 @@ module Jazzy
           global: true,
         }.freeze,
         'sourcekitten.source.lang.objc.decl.enum' => {
-          jazzy: 'Enumeration',
+          jazzy: 'Enum',
           url: 'Enum',
           dash: 'Enum',
           global: true,
