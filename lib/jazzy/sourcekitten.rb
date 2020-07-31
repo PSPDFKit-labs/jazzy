@@ -885,9 +885,20 @@ module Jazzy
                                  .gsub('\.\.\.', '[^)]*')
                                  .gsub(/<.*>/, '')
       whole_name_pat = /\A#{wildcard_expansion}\Z/
-      docs.find do |doc|
-        whole_name_pat =~ doc.name
+      matched = nil
+      docs.each_entry do |doc|
+        matches = whole_name_pat =~ doc.name
+        swift_matches = whole_name_pat =~ doc.swift_name
+        
+        if matched && (matches || swift_matches)
+          # We found multiple matches. Abort.
+          # This can happen when using nested Swift types, that have the same last component.
+          return nil
+        end
+
+        matched = doc if matches || swift_matches
       end
+      return matched
     end
 
     # Find the first ancestor of doc whose name matches name_part.
