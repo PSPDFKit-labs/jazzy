@@ -12,6 +12,24 @@
 
 * None.
 
+## 0.13.6
+
+##### Breaking
+
+* None.
+
+##### Enhancements
+
+* Support documentation generation from `.swiftmodule` binaries using
+  `--swift-build-tool symbolgraph` with Swift 5.3.  
+  [John Fairhurst](https://github.com/johnfairh)
+
+##### Bug Fixes
+
+* Always bypass codesigning when building Xcode projects.  
+  [John Fairhurst](https://github.com/johnfairh)
+  [#1183](https://github.com/realm/jazzy/issues/1183)
+
 ## 0.13.5
 
 ##### Breaking
