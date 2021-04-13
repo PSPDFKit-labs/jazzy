@@ -204,7 +204,6 @@ module Jazzy
         }.freeze,
         'sourcekitten.source.lang.objc.decl.enum' => {
           jazzy: 'Enum',
-          url: 'Enum',
           dash: 'Enum',
           global: true,
         }.freeze,
@@ -248,8 +247,7 @@ module Jazzy
           global: true,
         }.freeze,
         'sourcekitten.source.lang.objc.decl.struct' => {
-          jazzy: 'Structure',
-          url: 'Struct',
+          jazzy: 'Struct',
           dash: 'Struct',
           global: true,
         }.freeze,
@@ -343,7 +341,6 @@ module Jazzy
         }.freeze,
         'source.lang.swift.decl.enum' => {
           jazzy: 'Enumeration',
-          url: 'Enum',
           dash: 'Enum',
           global: true,
         }.freeze,
@@ -407,8 +404,7 @@ module Jazzy
           dash: 'Variable',
         }.freeze,
         'source.lang.swift.decl.struct' => {
-          jazzy: 'Structure',
-          url: 'Struct',
+          jazzy: 'Struct',
           dash: 'Struct',
           global: true,
         }.freeze,
@@ -417,8 +413,7 @@ module Jazzy
           dash: 'Method',
         }.freeze,
         'source.lang.swift.decl.typealias' => {
-          jazzy: 'Type Alias',
-          url: 'Typealias',
+          jazzy: 'Typealias',
           dash: 'Alias',
           global: true,
         }.freeze,
